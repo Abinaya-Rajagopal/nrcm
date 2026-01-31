@@ -1,32 +1,437 @@
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Clinical Grade Healthcare UI - Design System
+   Post-Operative Wound Monitoring Application
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ━━━━━━━━ CSS Custom Properties ━━━━━━━━ */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color: #213547;
-  background-color: #f5f5f5;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  
+  /* Base Colors - Clinical & Calm */
+  --color-white: #FFFFFF;
+  --color-background: #F8FAFC;
+  --color-background-alt: #F1F5F9;
+  
+  /* Neutral Grays */
+  --color-gray-50: #F9FAFB;
+  --color-gray-100: #F3F4F6;
+  --color-gray-200: #E5E7EB;
+  --color-gray-300: #D1D5DB;
+  --color-gray-400: #9CA3AF;
+  --color-gray-500: #6B7280;
+  --color-gray-600: #4B5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1F2937;
+  --color-gray-900: #111827;
+  
+  /* Clinical Blues */
+  --color-blue-50: #EFF6FF;
+  --color-blue-100: #DBEAFE;
+  --color-blue-500: #3B82F6;
+  --color-blue-600: #2563EB;
+  
+  /* Semantic Risk Colors */
+  --color-risk-green: #22C55E;
+  --color-risk-green-bg: #F0FDF4;
+  --color-risk-green-light: #DCFCE7;
+  
+  --color-risk-amber: #F59E0B;
+  --color-risk-amber-bg: #FFFBEB;
+  --color-risk-amber-light: #FEF3C7;
+  
+  --color-risk-red: #EF4444;
+  --color-risk-red-bg: #FEF2F2;
+  --color-risk-red-light: #FEE2E2;
+  
+  /* Warning Banner */
+  --color-warning-bg: #FEF3C7;
+  --color-warning-border: #F59E0B;
+  --color-warning-text: #92400E;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --spacing-4xl: 40px;
+  
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  
+  /* Transitions */
+  --transition-fast: all 0.15s ease;
+  --transition-normal: all 0.2s ease;
+  --transition-slow: all 0.3s ease;
 }
 
-* {
+/* ━━━━━━━━ Base Reset ━━━━━━━━ */
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 body {
+  font-family: var(--font-family);
+  line-height: 1.6;
+  color: var(--color-gray-800);
+  background-color: var(--color-background);
   min-height: 100vh;
-  background-color: #f3f4f6;
 }
 
-button:hover {
-  opacity: 0.9;
+/* ━━━━━━━━ Layer A Styling (Ground Truth) ━━━━━━━━ */
+.layer-a-card {
+  background: var(--color-white);
+  border: 2px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-2xl);
+  transition: var(--transition-normal);
 }
 
-button:active {
+.layer-a-card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+/* ━━━━━━━━ Layer B Styling (Simulation) ━━━━━━━━ */
+.layer-b-card {
+  background: var(--color-gray-50);
+  border: 2px dashed var(--color-gray-300);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-2xl);
+  opacity: 0.95;
+  position: relative;
+}
+
+.layer-b-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(0,0,0,0.01) 10px,
+    rgba(0,0,0,0.01) 20px
+  );
+  pointer-events: none;
+  border-radius: var(--radius-lg);
+}
+
+.simulated-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-gray-100);
+  border: 1px dashed var(--color-gray-400);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ━━━━━━━━ Toggle Switches ━━━━━━━━ */
+.toggle-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  background: var(--color-gray-200);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  border: none;
+  padding: 0;
+}
+
+.toggle-switch.active {
+  background: var(--color-blue-500);
+}
+
+.toggle-switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  background: var(--color-white);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: var(--transition-normal);
+}
+
+.toggle-switch.active::before {
+  transform: translateX(24px);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-700);
+}
+
+/* Segmented Control Toggle */
+.segmented-toggle {
+  display: inline-flex;
+  background: var(--color-gray-100);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+}
+
+.segmented-option {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-600);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.segmented-option:hover {
+  color: var(--color-gray-800);
+}
+
+.segmented-option.active {
+  background: var(--color-white);
+  color: var(--color-gray-900);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ━━━━━━━━ Warning Banner ━━━━━━━━ */
+.warning-banner {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-left: 4px solid var(--color-warning-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  margin-bottom: var(--spacing-2xl);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+}
+
+.warning-banner-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.warning-banner-text {
+  font-size: 14px;
+  color: var(--color-warning-text);
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+/* ━━━━━━━━ Risk Level Badges ━━━━━━━━ */
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.risk-badge.green {
+  background: var(--color-risk-green-bg);
+  color: #166534;
+  border: 1px solid var(--color-risk-green-light);
+}
+
+.risk-badge.amber {
+  background: var(--color-risk-amber-bg);
+  color: #92400E;
+  border: 1px solid var(--color-risk-amber-light);
+}
+
+.risk-badge.red {
+  background: var(--color-risk-red-bg);
+  color: #991B1B;
+  border: 1px solid var(--color-risk-red-light);
+}
+
+/* ━━━━━━━━ Measurement Source Label ━━━━━━━━ */
+.measurement-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 12px;
+  color: var(--color-gray-500);
+  background: var(--color-gray-50);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-gray-200);
+}
+
+.measurement-label-icon {
+  font-size: 14px;
+}
+
+/* ━━━━━━━━ Section Headers ━━━━━━━━ */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-xl);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-gray-800);
+}
+
+.section-icon {
+  font-size: 20px;
+}
+
+/* ━━━━━━━━ Cards Grid ━━━━━━━━ */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+/* ━━━━━━━━ Buttons ━━━━━━━━ */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-xl);
+  background: var(--color-blue-500);
+  color: var(--color-white);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary:hover {
+  background: var(--color-blue-600);
+}
+
+.btn-primary:active {
   transform: scale(0.98);
+}
+
+/* ━━━━━━━━ Patient View Simplified ━━━━━━━━ */
+.patient-status-card {
+  background: linear-gradient(135deg, var(--color-blue-50) 0%, var(--color-white) 100%);
+  border: 2px solid var(--color-blue-100);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-4xl);
+  text-align: center;
+}
+
+.patient-status-icon {
+  font-size: 64px;
+  margin-bottom: var(--spacing-xl);
+}
+
+.patient-status-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  margin-bottom: var(--spacing-md);
+}
+
+.patient-status-message {
+  font-size: 16px;
+  color: var(--color-gray-600);
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ━━━━━━━━ Animations ━━━━━━━━ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ━━━━━━━━ Responsive ━━━━━━━━ */
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .segmented-toggle {
+    flex-wrap: wrap;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
 }

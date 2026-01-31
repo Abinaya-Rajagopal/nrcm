@@ -9,10 +9,10 @@ export const config = {
   // API Configuration
   API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   API_VERSION: 'v1',
-  
+
   // Demo Mode (mirrors backend)
-  DEMO_MODE: true,
-  
+  DEMO_MODE: false,
+
   // Feature Flags
   ENABLE_TRAJECTORY_CHART: true,
   ENABLE_ALERTS: true,
