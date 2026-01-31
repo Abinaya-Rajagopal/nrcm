@@ -19,8 +19,8 @@ import {
   typography,
   spacing,
   labels,
-  type SimulationData
 } from '../designTokens';
+import type { SimulationData } from '../api/analyze';
 
 interface TrajectoryData {
   expected: number[];
@@ -52,7 +52,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   const allValues = [
     ...data.expected,
     ...data.actual,
-    ...(simulationMode && simulationData ? simulationData.adjustedTrajectory : []),
+    ...(simulationMode && simulationData ? simulationData.extrapolated_curve : []),
   ];
   const maxValue = Math.max(...allValues) * 1.15;
   const minValue = 0;
@@ -81,7 +81,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   const actualPath = createPath(data.actual);
   const actualAreaPath = createAreaPath(data.actual);
   const simulatedPath = simulationMode && simulationData
-    ? createPath(simulationData.adjustedTrajectory)
+    ? createPath(simulationData.extrapolated_curve)
     : '';
 
   // Styles

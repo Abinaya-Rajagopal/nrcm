@@ -62,17 +62,17 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [simulationMode]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await analyzeWound({ use_demo_image: true });
+      const response = await analyzeWound({ use_demo_image: true, enable_simulation: simulationMode });
       setData(response);
       // Reset selected day to latest when data loads
-      if (response?.trajectory?.actual?.length) {
-        setSelectedDay(response.trajectory.actual.length);
+      if (response?.measurement?.trajectory?.actual?.length) {
+        setSelectedDay(response.measurement.trajectory.actual.length);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
@@ -87,11 +87,11 @@ export const Dashboard: React.FC = () => {
 
   // Get metrics for selected day
   const getMetricsForDay = (day: number) => {
-    if (!data?.trajectory) return null;
+    if (!data?.measurement?.trajectory) return null;
     const index = day - 1;
-    const actual = data.trajectory.actual[index];
-    const expected = data.trajectory.expected[index];
-    const prevActual = index > 0 ? data.trajectory.actual[index - 1] : actual;
+    const actual = data.measurement.trajectory.actual[index];
+    const expected = data.measurement.trajectory.expected[index];
+    const prevActual = index > 0 ? data.measurement.trajectory.actual[index - 1] : actual;
 
     if (actual === undefined || expected === undefined) return null;
 
@@ -112,21 +112,21 @@ export const Dashboard: React.FC = () => {
 
   // Generate explanation content based on data
   const getExplanation = () => {
-    if (!data) return null;
+    if (!data?.measurement) return null;
 
-    const risk = data.risk_level as RiskLevel;
+    const risk = data.measurement.risk_level as RiskLevel;
     const config = riskConfig[risk];
 
     let status = config.label;
-    let reason = data.alert_reason || 'Wound healing is progressing as expected for this post-operative stage.';
+    let reason = data.measurement.alert_reason || 'Wound healing is progressing as expected for this post-operative stage.';
     let logic = '';
 
     if (risk === 'GREEN') {
-      logic = `Risk Assessment: GREEN\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (within expected range)\n• Redness: ${data.redness_pct.toFixed(1)}% (acceptable levels)\n• Exudate: ${data.pus_pct.toFixed(1)}% (minimal)\n• Trajectory: Following expected healing curve`;
+      logic = `Risk Assessment: GREEN\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (within expected range)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (acceptable levels)\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (minimal)\n• Trajectory: Following expected healing curve`;
     } else if (risk === 'AMBER') {
-      logic = `Risk Assessment: AMBER\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (deviation detected)\n• Redness: ${data.redness_pct.toFixed(1)}% (${data.redness_pct > 15 ? 'elevated' : 'normal'})\n• Exudate: ${data.pus_pct.toFixed(1)}% (${data.pus_pct > 5 ? 'elevated' : 'normal'})\n• Trajectory: Slower than expected healing rate`;
+      logic = `Risk Assessment: AMBER\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (deviation detected)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (${data.measurement.redness_pct > 15 ? 'elevated' : 'normal'})\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (${data.measurement.pus_pct > 5 ? 'elevated' : 'normal'})\n• Trajectory: Slower than expected healing rate`;
     } else {
-      logic = `Risk Assessment: RED\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (significantly above expected)\n• Redness: ${data.redness_pct.toFixed(1)}% (requires attention)\n• Exudate: ${data.pus_pct.toFixed(1)}% (elevated)\n• Trajectory: Healing stalled or regressing`;
+      logic = `Risk Assessment: RED\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (significantly above expected)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (requires attention)\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (elevated)\n• Trajectory: Healing stalled or regressing`;
     }
 
     return { status, reason, logic, riskLevel: risk };
@@ -164,33 +164,33 @@ export const Dashboard: React.FC = () => {
     }
 
     // Check redness
-    if (data.redness_pct > 15) {
+    if (data.measurement.redness_pct > 15) {
       alerts.push({
         id: 'redness-elevated',
         title: 'Elevated Redness Detected',
-        description: `Peri-wound redness is at ${data.redness_pct.toFixed(1)}%, which is above the normal threshold of 15%.`,
+        description: `Peri-wound redness is at ${data.measurement.redness_pct.toFixed(1)}%, which is above the normal threshold of 15%.`,
         metric: {
           label: 'Redness',
-          value: data.redness_pct,
+          value: data.measurement.redness_pct,
           unit: '%',
-          change: data.redness_pct - 15,
+          change: data.measurement.redness_pct - 15,
           direction: 'up'
         },
-        severity: data.redness_pct > 25 ? 'RED' : 'AMBER'
+        severity: data.measurement.redness_pct > 25 ? 'RED' : 'AMBER'
       });
     }
 
     // Check exudate
-    if (data.pus_pct > 5) {
+    if (data.measurement.pus_pct > 5) {
       alerts.push({
         id: 'exudate-elevated',
         title: 'Exudate Level Elevated',
-        description: `Exudate/pus percentage is at ${data.pus_pct.toFixed(1)}%, exceeding the 5% threshold.`,
+        description: `Exudate/pus percentage is at ${data.measurement.pus_pct.toFixed(1)}%, exceeding the 5% threshold.`,
         metric: {
           label: 'Exudate',
-          value: data.pus_pct,
+          value: data.measurement.pus_pct,
           unit: '%',
-          change: data.pus_pct - 5,
+          change: data.measurement.pus_pct - 5,
           direction: 'up'
         },
         severity: 'RED'
@@ -442,7 +442,7 @@ export const Dashboard: React.FC = () => {
 
         {/* Simple Status Card */}
         <section style={{ marginBottom: spacing['3xl'] }}>
-          <PatientStatusCard riskLevel={data.risk_level as RiskLevel} />
+          <PatientStatusCard riskLevel={data.measurement.risk_level as RiskLevel} />
         </section>
 
         {/* Explanation Panel for Patients */}
@@ -582,9 +582,9 @@ export const Dashboard: React.FC = () => {
               )}
             </div>
             <TrajectoryChart
-              data={data.trajectory}
+              data={data.measurement.trajectory}
               simulationMode={simulationMode}
-              simulationData={mockSimulationData}
+              simulationData={data.simulation || undefined}
               height={320}
               selectedDay={selectedDay}
             />
@@ -594,20 +594,20 @@ export const Dashboard: React.FC = () => {
               <div style={sliderLabelStyle}>
                 <span>📅 Timeline Control</span>
                 <span style={{ fontWeight: typography.bold, color: colors.blue600 }}>
-                  Day {selectedDay} of {data.trajectory.expected.length}
+                  Day {selectedDay} of {data.measurement.trajectory.expected.length}
                 </span>
               </div>
               <input
                 type="range"
                 min="1"
-                max={data.trajectory.expected.length}
+                max={data.measurement.trajectory.expected.length}
                 value={selectedDay}
                 onChange={(e) => setSelectedDay(parseInt(e.target.value))}
                 style={rangeInputStyle}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: typography.xs, color: colors.gray400, marginTop: spacing.xs }}>
                 <span>Day 1</span>
-                <span>Day {data.trajectory.expected.length}</span>
+                <span>Day {data.measurement.trajectory.expected.length}</span>
               </div>
             </div>
           </section>
@@ -620,13 +620,16 @@ export const Dashboard: React.FC = () => {
                 <span>Contextual Simulation (Layer B)</span>
               </div>
               <div style={{ marginBottom: spacing.xl }}>
+                {/* Inputs are effectively static for this demo since image is fixed */}
                 <SimulationInputsPanel context={mockSimulationData.context} />
               </div>
-              <HealingWindow
-                windowStart={mockSimulationData.healingWindowStart}
-                windowEnd={mockSimulationData.healingWindowEnd}
-                currentDay={selectedDay}
-              />
+              {data.simulation?.completion_window_days && (
+                <HealingWindow
+                  windowStart={data.simulation.completion_window_days[0]}
+                  windowEnd={data.simulation.completion_window_days[1]}
+                  currentDay={selectedDay}
+                />
+              )}
             </section>
           )}
         </div>
@@ -636,7 +639,7 @@ export const Dashboard: React.FC = () => {
 
           {/* Risk Level Badge */}
           <section style={{ marginBottom: spacing['2xl'] }}>
-            <RiskBadge level={data.risk_level as RiskLevel} size="lg" />
+            <RiskBadge level={data.measurement.risk_level as RiskLevel} size="lg" />
           </section>
 
           {/* Explainable Alerts Section */}
@@ -675,26 +678,26 @@ export const Dashboard: React.FC = () => {
             <div style={metricsGridStyle}>
               <MeasuredMetricsCard
                 label="Wound Area"
-                value={dayMetrics?.actual || data.area_cm2}
+                value={dayMetrics?.actual || data.measurement.area_cm2}
                 unit="cm²"
               />
               <MeasuredMetricsCard
                 label="Expected"
-                value={dayMetrics?.expected || data.trajectory.expected[selectedDay - 1]}
+                value={dayMetrics?.expected || data.measurement.trajectory.expected[selectedDay - 1]}
                 unit="cm²"
                 riskLevel="GREEN"
               />
               <MeasuredMetricsCard
                 label="Redness"
-                value={data.redness_pct}
+                value={data.measurement.redness_pct}
                 unit="%"
-                riskLevel={data.redness_pct > 15 ? 'AMBER' : 'GREEN'}
+                riskLevel={data.measurement.redness_pct > 15 ? 'AMBER' : 'GREEN'}
               />
               <MeasuredMetricsCard
                 label="Exudate"
-                value={data.pus_pct}
+                value={data.measurement.pus_pct}
                 unit="%"
-                riskLevel={data.pus_pct > 5 ? 'RED' : 'GREEN'}
+                riskLevel={data.measurement.pus_pct > 5 ? 'RED' : 'GREEN'}
               />
             </div>
 
@@ -735,9 +738,9 @@ export const Dashboard: React.FC = () => {
               <div style={metricsGridStyle}>
                 <SimulatedMetricsCard
                   label="Scale-Normalized Area"
-                  value={mockSimulationData.scaleNormalizedArea || 0}
+                  value={data.simulation?.simulated_area_cm2 || 0}
                   unit="cm²"
-                  originalValue={data.area_cm2}
+                  originalValue={data.measurement.area_cm2}
                 />
               </div>
             </section>
