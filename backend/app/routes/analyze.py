@@ -48,6 +48,7 @@ from ..services.heatmaps import (
     apply_heatmap_overlay
 )
 from ..services.simulation import run_hypothetical_simulation
+from ..services.session import add_observation
 from ..utils.response_adapter import build_frontend_response
 
 router = APIRouter(prefix="/analyze", tags=["Analysis"])
@@ -162,6 +163,17 @@ async def _execute_core_pipeline(request: AnalyzeRequest) -> Dict[str, Any]:
     fallback_flag = DEMO_MODE # Simplified for current logic
     
     # 3. ASSEMBLE ADAPTED RESPONSE
+    # Store this observation in session history
+    start_time = datetime.utcnow().isoformat()
+    # Note: We duplicate metric extraction here slightly to get values for storage
+    # In a full refactor, we would extract metrics once before this.
+    debug_metrics = get_debug_metrics(image_rgb, wound_mask, peri_mask)
+    add_observation(
+        area=debug_metrics['area_cm2'],
+        redness=debug_metrics['redness_pct'],
+        pus=debug_metrics['pus_pct']
+    )
+    
     # This adapter groups metrics, trajectory, risk, simulation, and metadata
     layered_response = build_frontend_response(
         image_rgb=image_rgb,

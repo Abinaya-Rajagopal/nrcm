@@ -34,6 +34,10 @@ LIMITATIONS = [
     "Simulation outputs have LOW confidence"
 ]
 
+from ..services.session import get_history, get_baseline_area
+
+# ... (imports)
+
 def build_frontend_response(
     image_rgb: np.ndarray,
     wound_mask: np.ndarray,
@@ -52,29 +56,51 @@ def build_frontend_response(
     metrics_data = get_debug_metrics(image_rgb, wound_mask, peri_mask)
     current_area = metrics_data['area_cm2']
     
-    # Day 1 / Baseline Logic
-    # We treat every new upload as the anchoring "Day 1" observation.
-    # This establishes the baseline for all future comparisons.
+    # MULTI-DAY TRAJECTORY LOGIC
+    # Retrieve full history including the measurement we just added
+    history = get_history()
     
-    # Calculate Risk (Static Analysis only for Day 1)
+    # Construct "Actual" trajectory from history
+    actual = [obs["area"] for obs in history]
+    
+    # Construct "Expected" trajectory (Baseline -> Target)
+    # Target: 50% reduction in 14 days (heuristic)
+    baseline = get_baseline_area()
+    expected = []
+    
+    # If we have history, project from Day 1
+    # If not (this is Day 1), project forward 7 days
+    days_to_project = max(len(actual), 7)
+    
+    for i in range(days_to_project):
+        # ROI: Exponential decay model (0.9^day)
+        expected_val = round(baseline * (0.9 ** i), 2)
+        expected.append(expected_val)
+        
+    # Get previous area for risk calc (Day N-1)
+    if len(actual) > 1:
+        prev_area = actual[-2]
+    else:
+        prev_area = current_area # Day 1
+    
+    # Calculate Risk based on LATEST change
     risk_assessment = determine_risk_level(
         current_area=current_area,
-        previous_area=current_area, # No history yet
+        previous_area=prev_area,
         redness_pct=metrics_data['redness_pct'],
         pus_pct=metrics_data['pus_pct']
     )
     
-    # Generate Forward-Looking Trajectory (Forecast)
-    # create a 7-day expected healing curve starting from today
-    expected = [round(current_area * (0.9 ** i), 2) for i in range(7)]
-    
-    # Actual data is just today
-    actual = [current_area]
-    
     trajectory = TrajectoryData(expected=expected, actual=actual)
     
-    # Deviation Calculation: actual[-1] - expected[-1]
-    deviation = round(actual[-1] - expected[-1], 2)
+    # Deviation Calculation: actual[-1] - expected[day_index]
+    # Ensure indices align
+    current_day_idx = len(actual) - 1
+    if current_day_idx < len(expected):
+        target_today = expected[current_day_idx]
+        deviation = round(current_area - target_today, 2)
+    else:
+        deviation = 0.0
     
     alert_reason = risk_assessment["alert_reasons"][0] if risk_assessment["alert_reasons"] else None
     
