@@ -10,9 +10,9 @@ Currently returns MOCK DATA only when DEMO_MODE is enabled.
 from fastapi import APIRouter, HTTPException
 from ..config import DEMO_MODE
 from ..schemas import AnalyzeRequest, AnalyzeResponse, TrajectoryData
-from ..services.segmentation import get_mock_segmentation
-from ..services.metrics import get_mock_metrics
-from ..services.trajectory import get_mock_trajectory
+from ..services.segmentation import get_mock_segmentation, segment_wound
+from ..services.metrics import get_mock_metrics, calculate_metrics
+from ..services.trajectory import get_mock_trajectory, analyze_trajectory
 
 router = APIRouter(prefix="/analyze", tags=["Analysis"])
 
@@ -32,10 +32,28 @@ async def analyze_wound(request: AnalyzeRequest) -> AnalyzeResponse:
         # Return mock data for demo/development
         return _get_demo_response()
     else:
-        # Real processing - NOT YET IMPLEMENTED
-        raise HTTPException(
-            status_code=501,
-            detail="Real processing not yet implemented. Enable DEMO_MODE."
+        # Real processing
+        
+        # 1. Segmentation
+        segmentation_result = segment_wound(request.image_base64)
+        
+        # 2. Metrics (uses segmentation mask)
+        metrics_result = calculate_metrics(segmentation_result)
+        
+        # 3. Trajectory (uses current metrics)
+        trajectory_result = analyze_trajectory(metrics_result)
+        
+        # 4. Construct Response
+        return AnalyzeResponse(
+            area_cm2=metrics_result["area_cm2"],
+            redness_pct=metrics_result["redness_pct"],
+            pus_pct=metrics_result["pus_pct"],
+            risk_level=trajectory_result["risk_level"],
+            trajectory=TrajectoryData(
+                expected=trajectory_result["trajectory"]["expected"],
+                actual=trajectory_result["trajectory"]["actual"]
+            ),
+            alert_reason=trajectory_result.get("alert_reason")
         )
 
 
