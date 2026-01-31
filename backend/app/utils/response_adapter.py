@@ -55,7 +55,10 @@ def build_frontend_response(
     # Historical logic (Synthetic history for demo/hackathon stability)
     # Rules: If only one observation exists, generate a minimal synthetic one.
     # In this prototype, we treat current_area as the second observation.
-    prev_area = 15.0 # Mock historical value
+    if current_area > 0:
+        prev_area = round(current_area * 1.15, 2) # Assume 15% healing occurred
+    else:
+        prev_area = 1.0 # Default fallback
     
     risk_assessment = determine_risk_level(
         current_area=current_area,
