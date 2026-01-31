@@ -39,6 +39,14 @@ Risk levels indicate the assessed healing status. These are **heuristic indicato
 | AMBER | -5% to 0% daily | 15-25% | 2-8% |
 | RED | > 0% (increasing) | > 25% | > 8% |
 
+### Trajectory Deviation (Projected vs Actual)
+
+| Level | Max Deviation % |
+|-------|-----------------|
+| GREEN | < 10% |
+| AMBER | 10% - 20% |
+| RED | > 20% |
+
 ---
 
 ## Important Disclaimers
