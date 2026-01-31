@@ -25,6 +25,10 @@ import { WarningBanner } from '../components/WarningBanner';
 import { ViewModeToggle, type ViewMode } from '../components/ViewModeToggle';
 import { MeasurementLabel } from '../components/MeasurementLabel';
 import { PatientStatusCard } from '../components/PatientStatusCard';
+import { ExplanationPanel } from '../components/ExplanationPanel';
+import { AlertCard } from '../components/AlertCard';
+import { LoadingSkeleton, MetricSkeleton, ChartSkeleton } from '../components/LoadingSkeleton';
+import { TrendIndicator } from '../components/TrendIndicator';
 
 // API & Data
 import { analyzeWound, type AnalyzeResponse } from '../api/analyze';
@@ -33,6 +37,7 @@ import {
   typography,
   spacing,
   mockSimulationData,
+  riskConfig,
   type RiskLevel,
 } from '../designTokens';
 
@@ -52,6 +57,9 @@ export const Dashboard: React.FC = () => {
   // Simulation state - OFF by default (Layer B hidden)
   const [simulationMode, setSimulationMode] = useState(false);
 
+  // Timeline state
+  const [selectedDay, setSelectedDay] = useState(5); // Default to latest day
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -62,6 +70,10 @@ export const Dashboard: React.FC = () => {
       setError(null);
       const response = await analyzeWound({ use_demo_image: true });
       setData(response);
+      // Reset selected day to latest when data loads
+      if (response?.trajectory?.actual?.length) {
+        setSelectedDay(response.trajectory.actual.length);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -69,27 +81,153 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Mock change data (would come from API comparing images)
-  const mockChanges = [
-    { metric: 'Wound Area', value: 8, direction: 'down' as const },
-    { metric: 'Redness', value: 12, direction: 'down' as const },
-  ];
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // COMPUTED VALUES
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // Get metrics for selected day
+  const getMetricsForDay = (day: number) => {
+    if (!data?.trajectory) return null;
+    const index = day - 1;
+    const actual = data.trajectory.actual[index];
+    const expected = data.trajectory.expected[index];
+    const prevActual = index > 0 ? data.trajectory.actual[index - 1] : actual;
+
+    if (actual === undefined || expected === undefined) return null;
+
+    const deviation = actual - expected;
+    const changeFromPrev = prevActual ? ((actual - prevActual) / prevActual) * 100 : 0;
+
+    return {
+      actual,
+      expected,
+      deviation,
+      changeFromPrev,
+      direction: changeFromPrev > 0.1 ? 'up' as const :
+        changeFromPrev < -0.1 ? 'down' as const : 'stable' as const
+    };
+  };
+
+  const dayMetrics = getMetricsForDay(selectedDay);
+
+  // Generate explanation content based on data
+  const getExplanation = () => {
+    if (!data) return null;
+
+    const risk = data.risk_level as RiskLevel;
+    const config = riskConfig[risk];
+
+    let status = config.label;
+    let reason = data.alert_reason || 'Wound healing is progressing as expected for this post-operative stage.';
+    let logic = '';
+
+    if (risk === 'GREEN') {
+      logic = `Risk Assessment: GREEN\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (within expected range)\n• Redness: ${data.redness_pct.toFixed(1)}% (acceptable levels)\n• Exudate: ${data.pus_pct.toFixed(1)}% (minimal)\n• Trajectory: Following expected healing curve`;
+    } else if (risk === 'AMBER') {
+      logic = `Risk Assessment: AMBER\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (deviation detected)\n• Redness: ${data.redness_pct.toFixed(1)}% (${data.redness_pct > 15 ? 'elevated' : 'normal'})\n• Exudate: ${data.pus_pct.toFixed(1)}% (${data.pus_pct > 5 ? 'elevated' : 'normal'})\n• Trajectory: Slower than expected healing rate`;
+    } else {
+      logic = `Risk Assessment: RED\n• Wound area: ${data.area_cm2.toFixed(1)} cm² (significantly above expected)\n• Redness: ${data.redness_pct.toFixed(1)}% (requires attention)\n• Exudate: ${data.pus_pct.toFixed(1)}% (elevated)\n• Trajectory: Healing stalled or regressing`;
+    }
+
+    return { status, reason, logic, riskLevel: risk };
+  };
+
+  const explanation = getExplanation();
+
+  // Generate alert cards data
+  const getAlerts = () => {
+    if (!data || !dayMetrics) return [];
+
+    const alerts: Array<{
+      id: string;
+      title: string;
+      description: string;
+      metric?: { label: string; value: number; unit: string; change?: number; direction?: 'up' | 'down' | 'stable' };
+      severity: RiskLevel;
+    }> = [];
+
+    // Check wound area deviation
+    if (Math.abs(dayMetrics.deviation) > 0.5) {
+      alerts.push({
+        id: 'area-deviation',
+        title: dayMetrics.deviation > 0 ? 'Wound Area Above Expected' : 'Wound Area Below Expected',
+        description: `Current wound area deviates from the expected healing trajectory by ${Math.abs(dayMetrics.deviation).toFixed(1)} cm².`,
+        metric: {
+          label: 'Deviation',
+          value: Math.abs(dayMetrics.deviation),
+          unit: 'cm²',
+          change: (dayMetrics.deviation / dayMetrics.expected) * 100,
+          direction: dayMetrics.deviation > 0 ? 'up' : 'down'
+        },
+        severity: Math.abs(dayMetrics.deviation) > 1.5 ? 'RED' : 'AMBER'
+      });
+    }
+
+    // Check redness
+    if (data.redness_pct > 15) {
+      alerts.push({
+        id: 'redness-elevated',
+        title: 'Elevated Redness Detected',
+        description: `Peri-wound redness is at ${data.redness_pct.toFixed(1)}%, which is above the normal threshold of 15%.`,
+        metric: {
+          label: 'Redness',
+          value: data.redness_pct,
+          unit: '%',
+          change: data.redness_pct - 15,
+          direction: 'up'
+        },
+        severity: data.redness_pct > 25 ? 'RED' : 'AMBER'
+      });
+    }
+
+    // Check exudate
+    if (data.pus_pct > 5) {
+      alerts.push({
+        id: 'exudate-elevated',
+        title: 'Exudate Level Elevated',
+        description: `Exudate/pus percentage is at ${data.pus_pct.toFixed(1)}%, exceeding the 5% threshold.`,
+        metric: {
+          label: 'Exudate',
+          value: data.pus_pct,
+          unit: '%',
+          change: data.pus_pct - 5,
+          direction: 'up'
+        },
+        severity: 'RED'
+      });
+    }
+
+    // If no alerts, show positive status
+    if (alerts.length === 0) {
+      alerts.push({
+        id: 'on-track',
+        title: 'Healing On Track',
+        description: 'All wound metrics are within expected parameters. Continue current care protocol.',
+        severity: 'GREEN'
+      });
+    }
+
+    return alerts;
+  };
+
+  const alerts = getAlerts();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STYLES
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   const containerStyle: React.CSSProperties = {
-    maxWidth: '1280px',
+    maxWidth: '1400px',
     margin: '0 auto',
     padding: `${spacing['4xl']} ${spacing.xl}`,
     fontFamily: typography.fontFamily,
     color: colors.gray800,
     minHeight: '100vh',
+    background: `linear-gradient(180deg, ${colors.gray50} 0%, ${colors.white} 100%)`,
   };
 
   const headerStyle: React.CSSProperties = {
-    marginBottom: spacing['4xl'],
+    marginBottom: spacing['3xl'],
   };
 
   const headerTopStyle: React.CSSProperties = {
@@ -112,6 +250,9 @@ export const Dashboard: React.FC = () => {
   const subtitleStyle: React.CSSProperties = {
     fontSize: typography.base,
     color: colors.gray500,
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacing.md,
   };
 
   const controlsStyle: React.CSSProperties = {
@@ -157,8 +298,8 @@ export const Dashboard: React.FC = () => {
 
   const metricsGridStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    gap: spacing.lg,
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: spacing.md,
   };
 
   const layerBSectionStyle: React.CSSProperties = {
@@ -184,31 +325,77 @@ export const Dashboard: React.FC = () => {
     alignItems: 'center',
     gap: spacing.sm,
     padding: `${spacing.md} ${spacing.xl}`,
-    background: colors.blue500,
+    background: `linear-gradient(135deg, ${colors.blue500} 0%, ${colors.blue600} 100%)`,
     color: colors.white,
     border: 'none',
     borderRadius: '10px',
     fontSize: typography.sm,
     fontWeight: typography.semibold,
     cursor: 'pointer',
-    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
+    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
     transition: 'all 0.2s',
   };
 
+  const sliderContainerStyle: React.CSSProperties = {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: '12px',
+    border: `1px solid ${colors.gray200}`,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+  };
+
+  const sliderLabelStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: colors.gray700,
+  };
+
+  const rangeInputStyle: React.CSSProperties = {
+    width: '100%',
+    cursor: 'pointer',
+    accentColor: colors.blue500,
+  };
+
+  const alertsSectionStyle: React.CSSProperties = {
+    marginBottom: spacing['2xl'],
+  };
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // LOADING & ERROR STATES
+  // LOADING STATE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   if (loading) {
     return (
-      <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: spacing.lg }}>🔬</div>
-          <div style={{ fontSize: typography.lg, color: colors.gray600 }}>Analyzing wound image...</div>
+      <div style={containerStyle}>
+        <header style={headerStyle}>
+          <LoadingSkeleton variant="text" width="300px" height="40px" />
+          <LoadingSkeleton variant="text" width="200px" height="20px" />
+        </header>
+        <div style={gridStyle}>
+          <div style={colMainStyle}>
+            <ChartSkeleton />
+            <div style={{ marginTop: spacing.xl }}>
+              <ChartSkeleton />
+            </div>
+          </div>
+          <div style={colSideStyle}>
+            <LoadingSkeleton variant="card" height="80px" />
+            <div style={{ marginTop: spacing.lg }}>
+              <MetricSkeleton />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ERROR STATE
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   if (error || !data) {
     return (
@@ -219,13 +406,17 @@ export const Dashboard: React.FC = () => {
           background: colors.riskRedBg,
           borderRadius: '16px',
           border: `2px solid ${colors.riskRedLight}`,
+          maxWidth: '400px',
         }}>
           <div style={{ fontSize: '48px', marginBottom: spacing.lg }}>⚠️</div>
-          <div style={{ fontSize: typography.lg, color: colors.riskRed, marginBottom: spacing.lg }}>
+          <div style={{ fontSize: typography.lg, color: colors.riskRed, marginBottom: spacing.lg, fontWeight: typography.semibold }}>
             {error || 'Unable to load data'}
           </div>
+          <p style={{ fontSize: typography.sm, color: colors.gray600, marginBottom: spacing.xl }}>
+            Please check your connection and try again. If the problem persists, contact support.
+          </p>
           <button style={refreshButtonStyle} onClick={fetchData}>
-            Try Again
+            🔄 Try Again
           </button>
         </div>
       </div>
@@ -239,12 +430,11 @@ export const Dashboard: React.FC = () => {
   if (viewMode === 'patient') {
     return (
       <div style={containerStyle}>
-        {/* Header */}
         <header style={headerStyle}>
           <div style={headerTopStyle}>
             <div>
               <h1 style={titleStyle}>Your Healing Progress</h1>
-              <p style={subtitleStyle}>Post-Operative Day 5</p>
+              <p style={subtitleStyle}>Post-Operative Day {selectedDay}</p>
             </div>
             <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
           </div>
@@ -255,7 +445,19 @@ export const Dashboard: React.FC = () => {
           <PatientStatusCard riskLevel={data.risk_level as RiskLevel} />
         </section>
 
-        {/* Before/After Comparison - Primary Interaction */}
+        {/* Explanation Panel for Patients */}
+        {explanation && (
+          <section style={{ marginBottom: spacing['3xl'] }}>
+            <ExplanationPanel
+              status={explanation.status}
+              reason={explanation.reason}
+              logic={explanation.logic}
+              riskLevel={explanation.riskLevel}
+            />
+          </section>
+        )}
+
+        {/* Before/After Comparison */}
         <section style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <h2 style={sectionTitleStyle}>
@@ -267,7 +469,7 @@ export const Dashboard: React.FC = () => {
             beforeImage={BEFORE_IMAGE}
             afterImage={AFTER_IMAGE}
             beforeLabel="Day 1"
-            afterLabel="Today"
+            afterLabel={`Day ${selectedDay}`}
             height={400}
           />
         </section>
@@ -298,8 +500,22 @@ export const Dashboard: React.FC = () => {
       <header style={headerStyle}>
         <div style={headerTopStyle}>
           <div>
-            <h1 style={titleStyle}>Wound Monitoring</h1>
-            <p style={subtitleStyle}>Patient ID: #8492 • Post-Operative Day 5</p>
+            <h1 style={titleStyle}>Wound Monitoring Dashboard</h1>
+            <div style={subtitleStyle}>
+              <span>Patient ID: #8492</span>
+              <span>•</span>
+              <span>Post-Operative Day {selectedDay}</span>
+              {dayMetrics && (
+                <>
+                  <span>•</span>
+                  <TrendIndicator
+                    value={Math.abs(dayMetrics.changeFromPrev)}
+                    direction={dayMetrics.direction}
+                    size="sm"
+                  />
+                </>
+              )}
+            </div>
           </div>
           <div style={controlsStyle}>
             <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
@@ -314,13 +530,25 @@ export const Dashboard: React.FC = () => {
       {/* Simulation Warning Banner */}
       <WarningBanner visible={simulationMode} />
 
+      {/* Progressive Explanation Panel */}
+      {explanation && (
+        <section style={{ marginBottom: spacing['2xl'] }}>
+          <ExplanationPanel
+            status={explanation.status}
+            reason={explanation.reason}
+            logic={explanation.logic}
+            riskLevel={explanation.riskLevel}
+          />
+        </section>
+      )}
+
       {/* Main Grid */}
       <div style={gridStyle}>
 
         {/* ━━━━━━━━ LEFT COLUMN: Visuals & Charts ━━━━━━━━ */}
         <div style={colMainStyle}>
 
-          {/* Visual Progression - Primary Interaction */}
+          {/* Visual Progression */}
           <section style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <h2 style={sectionTitleStyle}>
@@ -331,6 +559,8 @@ export const Dashboard: React.FC = () => {
             <ComparisonSlider
               beforeImage={BEFORE_IMAGE}
               afterImage={AFTER_IMAGE}
+              beforeLabel="Day 1"
+              afterLabel={`Day ${selectedDay}`}
               height={380}
             />
           </section>
@@ -342,33 +572,60 @@ export const Dashboard: React.FC = () => {
                 <span>📈</span>
                 <span>Healing Trajectory</span>
               </h2>
+              {dayMetrics && (
+                <div style={{ fontSize: typography.sm, color: colors.gray500 }}>
+                  Day {selectedDay}: {dayMetrics.actual.toFixed(1)} cm²
+                  <span style={{ marginLeft: spacing.sm }}>
+                    (Expected: {dayMetrics.expected.toFixed(1)} cm²)
+                  </span>
+                </div>
+              )}
             </div>
             <TrajectoryChart
               data={data.trajectory}
               simulationMode={simulationMode}
               simulationData={mockSimulationData}
               height={320}
+              selectedDay={selectedDay}
             />
+
+            {/* Timeline Slider */}
+            <div style={sliderContainerStyle}>
+              <div style={sliderLabelStyle}>
+                <span>📅 Timeline Control</span>
+                <span style={{ fontWeight: typography.bold, color: colors.blue600 }}>
+                  Day {selectedDay} of {data.trajectory.expected.length}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max={data.trajectory.expected.length}
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(parseInt(e.target.value))}
+                style={rangeInputStyle}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: typography.xs, color: colors.gray400, marginTop: spacing.xs }}>
+                <span>Day 1</span>
+                <span>Day {data.trajectory.expected.length}</span>
+              </div>
+            </div>
           </section>
 
-          {/* LAYER B SECTION - Only visible when simulation is enabled */}
+          {/* LAYER B SECTION */}
           {simulationMode && (
             <section style={layerBSectionStyle}>
               <div style={layerBHeaderStyle}>
                 <span>◇</span>
                 <span>Contextual Simulation (Layer B)</span>
               </div>
-
-              {/* Simulation Inputs */}
               <div style={{ marginBottom: spacing.xl }}>
                 <SimulationInputsPanel context={mockSimulationData.context} />
               </div>
-
-              {/* Healing Window */}
               <HealingWindow
                 windowStart={mockSimulationData.healingWindowStart}
                 windowEnd={mockSimulationData.healingWindowEnd}
-                currentDay={5}
+                currentDay={selectedDay}
               />
             </section>
           )}
@@ -382,7 +639,27 @@ export const Dashboard: React.FC = () => {
             <RiskBadge level={data.risk_level as RiskLevel} size="lg" />
           </section>
 
-          {/* Measurement Source Label - MANDATORY */}
+          {/* Explainable Alerts Section */}
+          <section style={alertsSectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>
+                <span>🔔</span>
+                <span>Alerts & Insights</span>
+              </h2>
+            </div>
+            {alerts.map(alert => (
+              <AlertCard
+                key={alert.id}
+                title={alert.title}
+                description={alert.description}
+                metric={alert.metric}
+                severity={alert.severity}
+                timestamp={`Day ${selectedDay}`}
+              />
+            ))}
+          </section>
+
+          {/* Measurement Source Label */}
           <section style={{ marginBottom: spacing['2xl'] }}>
             <MeasurementLabel />
           </section>
@@ -398,8 +675,14 @@ export const Dashboard: React.FC = () => {
             <div style={metricsGridStyle}>
               <MeasuredMetricsCard
                 label="Wound Area"
-                value={data.area_cm2}
+                value={dayMetrics?.actual || data.area_cm2}
                 unit="cm²"
+              />
+              <MeasuredMetricsCard
+                label="Expected"
+                value={dayMetrics?.expected || data.trajectory.expected[selectedDay - 1]}
+                unit="cm²"
+                riskLevel="GREEN"
               />
               <MeasuredMetricsCard
                 label="Redness"
@@ -416,7 +699,20 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* Change Indicator */}
-            <ChangeIndicator changes={mockChanges} lastCaptureTime="2 days ago" />
+            {dayMetrics && (
+              <div style={{ marginTop: spacing.lg }}>
+                <ChangeIndicator
+                  changes={[
+                    {
+                      metric: 'Wound Area',
+                      value: Math.abs(dayMetrics.changeFromPrev),
+                      direction: dayMetrics.direction === 'down' ? 'down' : 'up'
+                    }
+                  ]}
+                  lastCaptureTime={`Day ${selectedDay - 1}`}
+                />
+              </div>
+            )}
           </section>
 
           {/* Simulation Toggle */}
@@ -427,7 +723,7 @@ export const Dashboard: React.FC = () => {
             />
           </section>
 
-          {/* LAYER B: Simulated Metrics - Only when enabled */}
+          {/* LAYER B: Simulated Metrics */}
           {simulationMode && (
             <section style={sectionStyle}>
               <div style={sectionHeaderStyle}>
@@ -446,36 +742,7 @@ export const Dashboard: React.FC = () => {
               </div>
             </section>
           )}
-
-          {/* Alert Reason */}
-          {data.alert_reason && (
-            <section style={{
-              background: colors.riskAmberBg,
-              border: `1px solid ${colors.riskAmberLight}`,
-              borderRadius: '12px',
-              padding: spacing.lg,
-            }}>
-              <div style={{
-                fontSize: typography.xs,
-                fontWeight: typography.semibold,
-                color: colors.gray600,
-                marginBottom: spacing.sm,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                Alert Reason
-              </div>
-              <p style={{
-                fontSize: typography.sm,
-                color: colors.gray700,
-                lineHeight: 1.6,
-              }}>
-                {data.alert_reason}
-              </p>
-            </section>
-          )}
         </div>
-
       </div>
     </div>
   );

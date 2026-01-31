@@ -33,6 +33,7 @@ interface TrajectoryChartProps {
   simulationData?: SimulationData;
   width?: number;
   height?: number;
+  selectedDay?: number;
 }
 
 export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
@@ -41,6 +42,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   simulationData,
   width = 600,
   height = 320,
+  selectedDay,
 }) => {
   const padding = { top: 30, right: 30, bottom: 50, left: 55 };
   const chartWidth = width - padding.left - padding.right;
@@ -187,6 +189,20 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
           );
         })}
 
+        {/* Selected Day Highlight */}
+        {selectedDay !== undefined && (
+             <line 
+                x1={xScale(selectedDay - 1, data.expected.length)} // selectedDay is 1-based, index is 0-based
+                y1={padding.top}
+                x2={xScale(selectedDay - 1, data.expected.length)}
+                y2={padding.top + chartHeight}
+                stroke={colors.gray400}
+                strokeWidth={1}
+                strokeDasharray="4 4"
+             />
+        )}
+
+
         {/* X-axis labels */}
         {data.expected.map((_, i) => (
           <text
@@ -268,12 +284,12 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
           {/* Layer A legends */}
           <line x1={0} y1={0} x2={20} y2={0} stroke={colors.riskGreen} strokeWidth={2.5} />
           <text x={25} y={4} fontSize={11} fill={colors.gray600} fontFamily={typography.fontFamily}>
-            Reference Path
+            Expected
           </text>
 
           <circle cx={100} cy={0} r={4} fill={colors.blue500} />
           <text x={108} y={4} fontSize={11} fill={colors.gray600} fontFamily={typography.fontFamily}>
-            Measured Progress
+             Measured
           </text>
 
           {/* Layer B legend - only in simulation mode */}
@@ -281,7 +297,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
             <>
               <line x1={220} y1={0} x2={240} y2={0} stroke={colors.riskAmber} strokeWidth={2} strokeDasharray="6 3" />
               <text x={245} y={4} fontSize={11} fill={colors.gray600} fontFamily={typography.fontFamily}>
-                Simulated Trajectory
+                 Simulated
               </text>
             </>
           )}
