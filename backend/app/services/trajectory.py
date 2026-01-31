@@ -2,6 +2,7 @@
 Trajectory Service
 
 Handles healing prediction, trajectory comparison, and risk assessment.
+Designed to receive metrics from the upstream pipeline (Person 2/3).
 """
 
 from typing import Dict, Any, List, Optional, Tuple
@@ -41,11 +42,12 @@ def calculate_expected_trajectory(
     Calculate expected healing trajectory.
     
     Logic:
-    - Assumes roughly 10% wound area reduction per day, compounding over time for larger wounds.
-    - This creates a standard standard smooth healing curve.
+    - Day-1 area is used as the baseline for projecting healing progress.
+    - Assumes roughly 10% wound area reduction per day, compounding over time.
+    - This creates a smooth, monotonically decreasing healing curve.
     
     Args:
-        initial_area: Starting wound area in cm²
+        initial_area: Starting wound area in cm² (Day-1 area)
         days: Number of days to project
         healing_rate: Daily reduction rate (default 0.10)
         
@@ -106,53 +108,112 @@ def compare_trajectories(
     Compare expected vs actual trajectory.
     """
     if not expected or not actual:
-        return {}
+        return {"deviation_pct": 0.0, "trend_pct": 0.0}
         
-    current_expected = expected[-1]
+    current_expected = expected[len(actual) - 1] if len(actual) <= len(expected) else expected[-1]
     current_actual = actual[-1]
     
-    # Calculate deviation percentage
+    # Calculate deviation percentage (positive = actual is larger than expected = worse)
     if current_expected > 0:
         deviation_pct = ((current_actual - current_expected) / current_expected) * 100.0
     else:
         deviation_pct = 0.0
+    
+    # Calculate trend over last 2 days (positive = area increasing = worsening)
+    if len(actual) >= 2:
+        prev_area = actual[-2]
+        if prev_area > 0:
+            trend_pct = ((current_actual - prev_area) / prev_area) * 100.0
+        else:
+            trend_pct = 0.0
+    else:
+        trend_pct = 0.0  # Not enough data for trend
         
     return {
         "deviation_pct": round(deviation_pct, 1),
-        "current_diff": round(current_actual - current_expected, 1)
+        "trend_pct": round(trend_pct, 1)
     }
 
 
-def analyze_trajectory(current_metrics: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_trajectory(
+    area_history: List[float],
+    segmentation_mode: str = "normal"
+) -> Dict[str, Any]:
     """
-    Orchestrate trajectory analysis based on current metrics.
+    Orchestrate trajectory analysis based on pipeline metrics.
+    
+    This function is the primary entry point for Person-1 (Orchestrator) integration.
+    It takes the area_cm2 values across days and the segmentation mode from the metrics pipeline.
     
     Args:
-        current_metrics: Dictionary containing current area, redness, etc.
+        area_history: List of area_cm2 values from Day-1 onwards. 
+                      Day-1 area is used as the baseline for expected curve.
+        segmentation_mode: "normal" or "fallback" (from metrics pipeline).
         
     Returns:
-        Dict containing risk_level, trajectory data, and alert_reason
+        Dict containing trajectory_status, risk_level, trajectory data, alert flag, and reason.
+    
+    IMPORTANT - Fallback Mode Handling:
+    If segmentation_mode == "fallback", the area metrics are considered unreliable.
+    In this case, we skip all trajectory deviation and risk logic to avoid false alerts.
+    This is because fallback segmentation may produce constant or inaccurate area values
+    that do not reflect true clinical status.
     """
-    # Real implementation would:
-    # 1. Fetch historical data for this patient/wound
-    # 2. Append current_method['area_cm2'] to history
-    # 3. Calculate expected trajectory
-    # 4. Compare and determine risk
     
-    # Mocking the flow:
-    current_area = current_metrics.get("area_cm2", 12.4)
-    expected_curve = calculate_expected_trajectory(current_area)
+    # --- Fallback Mode: Skip Risk Assessment ---
+    # WHY: Fallback segmentation uses a less accurate method.
+    # Constant or stalled area_cm2 in fallback is NOT a clinical signal.
+    # Raising alerts would mislead clinicians. We return a safe, neutral result.
+    if segmentation_mode == "fallback":
+        return {
+            "trajectory_status": "indeterminate",
+            "risk_level": None,
+            "trajectory": {
+                "expected": [],
+                "actual": area_history if area_history else []
+            },
+            "alert": False,
+            "reason": "Segmentation fallback mode; area metrics unreliable"
+        }
     
-    # We use fixed mock data for 'actual' in this stub
-    actual_curve = [12.0, 11.5, 11.3, 11.2, 11.2]
+    # --- Normal Mode: Full Trajectory Analysis ---
+    if not area_history or len(area_history) == 0:
+        return {
+            "trajectory_status": "insufficient_data",
+            "risk_level": RISK_GREEN,
+            "trajectory": {"expected": [], "actual": []},
+            "alert": False,
+            "reason": "Not enough data for trajectory analysis"
+        }
     
+    # Day-1 area is the baseline for expected healing curve
+    initial_area = area_history[0]
+    num_days = len(area_history)
+    
+    # Calculate expected trajectory based on Day-1 area
+    expected_curve = calculate_expected_trajectory(initial_area, days=num_days)
+    
+    # Actual trajectory is the area_history from the pipeline
+    actual_curve = area_history
+    
+    # Compare trajectories to get deviation and trend
     comparison = compare_trajectories(expected_curve, actual_curve)
+    deviation_pct = comparison.get("deviation_pct", 0.0)
+    trend_pct = comparison.get("trend_pct", 0.0)
+    
+    # Calculate risk level based on deviation and trend
+    risk_level, alert_reason = calculate_risk_level(deviation_pct, trend_pct)
+    
+    # Determine if an alert should be raised
+    alert = risk_level in [RISK_AMBER, RISK_RED]
     
     return {
-        "risk_level": "AMBER",  # Derived from comparison
+        "trajectory_status": "analyzed",
+        "risk_level": risk_level,
         "trajectory": {
             "expected": expected_curve,
             "actual": actual_curve
         },
-        "alert_reason": comparison.get("alert_reason")
+        "alert": alert,
+        "reason": alert_reason
     }
