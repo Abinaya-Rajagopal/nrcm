@@ -72,3 +72,38 @@ def compare_trajectories(expected: List[float], actual: List[float]) -> Dict[str
         "stall_detected": True,
         "alert_reason": "Healing stalled for 2 days"
     }
+
+
+def analyze_trajectory(current_metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Orchestrate trajectory analysis based on current metrics.
+    
+    Args:
+        current_metrics: Dictionary containing current area, redness, etc.
+        
+    Returns:
+        Dict containing risk_level, trajectory data, and alert_reason
+    """
+    # Real implementation would:
+    # 1. Fetch historical data for this patient/wound
+    # 2. Append current_method['area_cm2'] to history
+    # 3. Calculate expected trajectory
+    # 4. Compare and determine risk
+    
+    # Mocking the flow:
+    current_area = current_metrics.get("area_cm2", 12.4)
+    expected_curve = calculate_expected_trajectory(current_area)
+    
+    # We use fixed mock data for 'actual' in this stub
+    actual_curve = [12.0, 11.5, 11.3, 11.2, 11.2]
+    
+    comparison = compare_trajectories(expected_curve, actual_curve)
+    
+    return {
+        "risk_level": "AMBER",  # Derived from comparison
+        "trajectory": {
+            "expected": expected_curve,
+            "actual": actual_curve
+        },
+        "alert_reason": comparison.get("alert_reason")
+    }

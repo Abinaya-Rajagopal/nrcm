@@ -83,3 +83,31 @@ def calculate_exudate(image: Any, mask: Any) -> float:
     """
     # NOT IMPLEMENTED - Return mock
     return 4.1
+
+
+def calculate_metrics(segmentation_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Orchestrate metric calculation based on segmentation result.
+    
+    Args:
+        segmentation_result: Output from segmentation service
+        
+    Returns:
+        Dict containing all required metrics for response
+    """
+    # In a real implementation, we would extract the masks from segmentation_result
+    # and pass them to the specific calculation functions.
+    # For now, we mock that flow.
+    
+    # mask = segmentation_result.get("mask")
+    # image = segmentation_result.get("image")
+    
+    area = calculate_wound_area(None)
+    redness = calculate_redness(None, None)
+    pus = calculate_exudate(None, None)
+    
+    return {
+        "area_cm2": area,
+        "redness_pct": redness,
+        "pus_pct": pus
+    }

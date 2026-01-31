@@ -42,5 +42,6 @@ def segment_wound(image_data: bytes) -> Dict[str, Any]:
         - Return actual mask coordinates
         - Calculate wound boundary
     """
-    # NOT IMPLEMENTED - Return mock
+    # If image_data is provided (base64 or bytes), we would process it here
+    # For now, we just return the mock structure
     return get_mock_segmentation()
