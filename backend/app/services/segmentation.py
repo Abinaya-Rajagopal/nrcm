@@ -340,6 +340,58 @@ def _validate_mask(mask: np.ndarray, image_shape: Tuple[int, int]) -> bool:
 
 
 # ============================================================
+# Heuristic Fallback (Color-based)
+# ============================================================
+
+def _segment_by_color(image: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Attempt to segment wound based on simple color heuristics (Red/Pink/Fleshy).
+    Used as a smart fallback when ML models are unavailable.
+    """
+    try:
+        cv2 = _ensure_cv2()
+        # Convert to HSV
+        if image.shape[2] == 3:
+            hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        else:
+            return None
+
+        # Broad Red/Pink range (Wound bed colors)
+        lower_red1 = np.array([0, 30, 30])
+        upper_red1 = np.array([20, 255, 255])
+        lower_red2 = np.array([160, 30, 30])
+        upper_red2 = np.array([180, 255, 255])
+
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+        raw_mask = cv2.bitwise_or(mask1, mask2)
+
+        # Morphological Cleanup
+        kernel = np.ones((5,5), np.uint8)
+        # Open to remove noise
+        mask_clean = cv2.morphologyEx(raw_mask, cv2.MORPH_OPEN, kernel)
+        # Close to fill holes
+        mask_clean = cv2.morphologyEx(mask_clean, cv2.MORPH_CLOSE, kernel, iterations=2)
+        
+        # Keep only the largest connected component (assume main wound)
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_clean, connectivity=8)
+        
+        if num_labels <= 1:
+            return None # No distinct wound found
+
+        # Find largest component (ignoring background 0)
+        largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+        
+        final_mask = np.zeros_like(mask_clean)
+        final_mask[labels == largest_label] = 1
+        
+        return final_mask
+        
+    except Exception:
+        return None
+
+
+# ============================================================
 # Main Segmentation Function
 # ============================================================
 
@@ -381,6 +433,10 @@ def segment_wound(
         predictor = _get_predictor()
         if predictor.model_loaded:
             wound_mask = predictor.predict(image, point)
+        
+        # If model failed to load or predict, try smart color fallback
+        if wound_mask is None:
+            wound_mask = _segment_by_color(image)
     
     # Validate mask
     if not _validate_mask(wound_mask, image_shape):

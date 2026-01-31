@@ -60,12 +60,13 @@ export const Dashboard: React.FC = () => {
   // Timeline state
   const [selectedDay, setSelectedDay] = useState(5); // Default to latest day
 
+  // Image upload state
+  const [currentImage, setCurrentImage] = useState(AFTER_IMAGE);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     fetchData();
   }, [simulationMode]);
-
-  // Image upload state
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -73,6 +74,7 @@ export const Dashboard: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
+        setCurrentImage(base64String); // Update visual
         fetchData(base64String);
       };
       reader.readAsDataURL(file);
@@ -495,7 +497,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <ComparisonSlider
             beforeImage={BEFORE_IMAGE}
-            afterImage={AFTER_IMAGE}
+            afterImage={currentImage}
             beforeLabel="Day 1"
             afterLabel={`Day ${selectedDay}`}
             height={400}
@@ -595,7 +597,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <ComparisonSlider
               beforeImage={BEFORE_IMAGE}
-              afterImage={AFTER_IMAGE}
+              afterImage={currentImage}
               beforeLabel="Day 1"
               afterLabel={`Day ${selectedDay}`}
               height={380}
