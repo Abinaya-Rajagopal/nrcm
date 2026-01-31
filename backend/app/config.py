@@ -8,7 +8,7 @@ DEMO_MODE controls whether the application returns mock data or uses real proces
 # Demo Mode Toggle
 # When True: Returns mock/synthetic data for all endpoints
 # When False: Uses real processing logic (not yet implemented)
-DEMO_MODE = False
+DEMO_MODE = True
 
 # API Settings
 API_VERSION = "v1"
