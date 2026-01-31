@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { TrajectoryData } from '../api/analyze';
+import type { TrajectoryData } from '../api/analyze';
 
 interface TrajectoryChartProps {
   data: TrajectoryData;
@@ -14,146 +14,175 @@ interface TrajectoryChartProps {
   height?: number;
 }
 
-export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({ 
-  data, 
-  width = 400, 
-  height = 200 
+export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
+  data,
+  width = 600,
+  height = 300
 }) => {
-  const padding = 40;
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
+  const padding = { top: 20, right: 30, bottom: 40, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
 
   // Calculate scales
   const allValues = [...data.expected, ...data.actual];
-  const maxValue = Math.max(...allValues);
-  const minValue = Math.min(...allValues) * 0.9;
-  const valueRange = maxValue - minValue;
+  const maxValue = Math.max(...allValues) * 1.1; // Add headroom
+  const minValue = 0; // Fix to 0 for area charts usually, or Math.min(...allValues) * 0.9
 
-  const xScale = (index: number) => 
-    padding + (index / (data.expected.length - 1)) * chartWidth;
-  
-  const yScale = (value: number) => 
-    padding + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+  const xScale = (index: number) =>
+    padding.left + (index / (data.expected.length - 1)) * chartWidth;
+
+  const yScale = (value: number) =>
+    padding.top + chartHeight - ((value - minValue) / (maxValue - minValue)) * chartHeight;
 
   // Generate path strings
-  const createPath = (values: number[]) => 
-    values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(v)}`).join(' ');
+  const createPath = (values: number[]) => {
+    if (values.length === 0) return '';
+    const points = values.map((v, i) => `${xScale(i)},${yScale(v)}`);
+    return `M ${points.join(' L ')}`;
+  };
+
+  // Create area path (for gradient fill)
+  const createAreaPath = (values: number[]) => {
+    if (values.length === 0) return '';
+    const linePath = createPath(values);
+    return `${linePath} L ${xScale(values.length - 1)},${padding.top + chartHeight} L ${padding.left},${padding.top + chartHeight} Z`;
+  };
 
   const expectedPath = createPath(data.expected);
   const actualPath = createPath(data.actual);
+  const actualAreaPath = createAreaPath(data.actual);
 
   const containerStyle: React.CSSProperties = {
     backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '16px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    fontFamily: 'sans-serif',
   };
 
   const titleStyle: React.CSSProperties = {
-    fontSize: '16px',
-    fontWeight: 600,
+    fontSize: '18px',
+    fontWeight: 700,
     color: '#111827',
-    marginBottom: '12px',
+    marginBottom: '4px',
   };
 
-  const legendStyle: React.CSSProperties = {
-    display: 'flex',
-    gap: '20px',
-    justifyContent: 'center',
-    marginTop: '12px',
-    fontSize: '12px',
-  };
-
-  const legendItemStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
+  const subTitleStyle: React.CSSProperties = {
+    fontSize: '14px',
+    color: '#6B7280',
+    marginBottom: '20px',
   };
 
   return (
     <div style={containerStyle}>
-      <div style={titleStyle}>Healing Trajectory</div>
-      <svg width={width} height={height}>
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
-          <line
-            key={ratio}
-            x1={padding}
-            y1={padding + chartHeight * ratio}
-            x2={padding + chartWidth}
-            y2={padding + chartHeight * ratio}
-            stroke="#e5e7eb"
-            strokeDasharray="4"
-          />
+      <div style={titleStyle}>Recovery Trajectory</div>
+      <div style={subTitleStyle}>Healing progress over the last {data.actual.length} days</div>
+
+      <svg width={width} height={height} style={{ overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Grid lines (Y-axis) */}
+        {[0, 0.2, 0.4, 0.6, 0.8, 1].map((ratio) => {
+          const y = padding.top + chartHeight * ratio;
+          return (
+            <g key={ratio}>
+              <line
+                x1={padding.left}
+                y1={y}
+                x2={padding.left + chartWidth}
+                y2={y}
+                stroke="#F3F4F6"
+                strokeWidth="1"
+              />
+              <text
+                x={padding.left - 10}
+                y={y + 4}
+                textAnchor="end"
+                fontSize={12}
+                fill="#9CA3AF"
+              >
+                {(maxValue - (ratio * (maxValue - minValue))).toFixed(1)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X-axis custom labels (Days) */}
+        {data.expected.map((_, i) => (
+          <text
+            key={`x-${i}`}
+            x={xScale(i)}
+            y={height - 10}
+            textAnchor="middle"
+            fontSize={12}
+            fill="#9CA3AF"
+          >
+            Day {i + 1}
+          </text>
         ))}
 
         {/* Expected trajectory (green dashed) */}
         <path
           d={expectedPath}
           fill="none"
-          stroke="#22c55e"
+          stroke="#10B981"
           strokeWidth={2}
-          strokeDasharray="6 4"
+          strokeDasharray="6 6"
+        />
+
+        {/* Actual Area Fill */}
+        <path
+          d={actualAreaPath}
+          fill="url(#actualGradient)"
         />
 
         {/* Actual trajectory (orange solid) */}
         <path
           d={actualPath}
           fill="none"
-          stroke="#f59e0b"
-          strokeWidth={2}
+          stroke="#F59E0B"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
 
-        {/* Data points - Expected */}
-        {data.expected.map((v, i) => (
-          <circle
-            key={`exp-${i}`}
-            cx={xScale(i)}
-            cy={yScale(v)}
-            r={4}
-            fill="#22c55e"
-          />
-        ))}
-
-        {/* Data points - Actual */}
+        {/* Data points - Actual (only last one emphasized) */}
         {data.actual.map((v, i) => (
-          <circle
-            key={`act-${i}`}
-            cx={xScale(i)}
-            cy={yScale(v)}
-            r={4}
-            fill="#f59e0b"
-          />
+          <g key={`act-${i}`}>
+            <circle
+              cx={xScale(i)}
+              cy={yScale(v)}
+              r={i === data.actual.length - 1 ? 6 : 4}
+              fill="#fff"
+              stroke="#F59E0B"
+              strokeWidth={2}
+            />
+            {i === data.actual.length - 1 && (
+              <circle
+                cx={xScale(i)}
+                cy={yScale(v)}
+                r={10}
+                fill="#F59E0B"
+                fillOpacity="0.2"
+              />
+            )}
+          </g>
         ))}
 
-        {/* Y-axis labels */}
-        <text x={padding - 8} y={padding} textAnchor="end" fontSize={10} fill="#6b7280">
-          {maxValue.toFixed(1)}
-        </text>
-        <text x={padding - 8} y={padding + chartHeight} textAnchor="end" fontSize={10} fill="#6b7280">
-          {minValue.toFixed(1)}
-        </text>
+        {/* Legend */}
+        <g transform={`translate(${padding.left}, 0)`}>
+          <circle cx={0} cy={0} r={4} fill="#10B981" />
+          <text x={10} y={4} fontSize={12} fill="#374151">Expected Path</text>
 
-        {/* X-axis label */}
-        <text x={padding + chartWidth / 2} y={height - 8} textAnchor="middle" fontSize={10} fill="#6b7280">
-          Days
-        </text>
-
-        {/* Y-axis label */}
-        <text x={12} y={height / 2} textAnchor="middle" fontSize={10} fill="#6b7280" transform={`rotate(-90 12 ${height/2})`}>
-          Area (cm²)
-        </text>
+          <circle cx={100} cy={0} r={4} fill="#F59E0B" />
+          <text x={110} y={4} fontSize={12} fill="#374151">Actual Healing</text>
+        </g>
       </svg>
-      <div style={legendStyle}>
-        <div style={legendItemStyle}>
-          <div style={{ width: 16, height: 3, backgroundColor: '#22c55e' }} />
-          <span>Expected</span>
-        </div>
-        <div style={legendItemStyle}>
-          <div style={{ width: 16, height: 3, backgroundColor: '#f59e0b' }} />
-          <span>Actual</span>
-        </div>
-      </div>
     </div>
   );
 };
