@@ -52,34 +52,24 @@ def build_frontend_response(
     metrics_data = get_debug_metrics(image_rgb, wound_mask, peri_mask)
     current_area = metrics_data['area_cm2']
     
-    # Historical logic (Synthetic history for demo/hackathon stability)
-    # Rules: If only one observation exists, generate a minimal synthetic one.
-    # In this prototype, we treat current_area as the second observation.
-    if current_area > 0:
-        prev_area = round(current_area * 1.15, 2) # Assume 15% healing occurred
-    else:
-        prev_area = 1.0 # Default fallback
+    # Day 1 / Baseline Logic
+    # We treat every new upload as the anchoring "Day 1" observation.
+    # This establishes the baseline for all future comparisons.
     
+    # Calculate Risk (Static Analysis only for Day 1)
     risk_assessment = determine_risk_level(
         current_area=current_area,
-        previous_area=prev_area,
+        previous_area=current_area, # No history yet
         redness_pct=metrics_data['redness_pct'],
         pus_pct=metrics_data['pus_pct']
     )
     
-    expected = calculate_expected_trajectory(initial_area=prev_area, days=2)
-    actual = [prev_area, current_area]
+    # Generate Forward-Looking Trajectory (Forecast)
+    # create a 7-day expected healing curve starting from today
+    expected = [round(current_area * (0.9 ** i), 2) for i in range(7)]
     
-    # SAFETY: Guarantee non-empty and multi-point trajectories
-    if not actual:
-        actual = [current_area, current_area]
-    elif len(actual) == 1:
-        actual = [actual[0], actual[0]] # [area, area]
-        
-    if not expected:
-        expected = [current_area, current_area * 0.9]
-    elif len(expected) == 1:
-        expected = [expected[0], expected[0] * 0.9]
+    # Actual data is just today
+    actual = [current_area]
     
     trajectory = TrajectoryData(expected=expected, actual=actual)
     
