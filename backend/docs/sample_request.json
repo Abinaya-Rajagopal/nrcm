@@ -1,0 +1,12 @@
+{
+  "image_base64": "...",
+  "use_demo_image": false,
+  "enable_simulation": true,
+  "metadata": {
+    "is_smoker": true,
+    "has_diabetes": false,
+    "age": 45,
+    "surgery_type": "Orthopedic Post-Op",
+    "has_reference_object": true
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "measurement": {
+    "area_cm2": 12.4,
+    "redness_pct": 18.2,
+    "pus_pct": 4.1,
+    "risk_level": "AMBER",
+    "trajectory": {
+      "expected": [
+        12.0,
+        10.8,
+        9.7,
+        8.7,
+        7.8
+      ],
+      "actual": [
+        12.0,
+        11.5,
+        11.3,
+        11.2,
+        11.2
+      ]
+    },
+    "alert_reason": "Healing rate slower than expected (stalled trajectory)",
+    "deviation_cm2": 3.4
+  },
+  "simulation": {
+    "enabled": true,
+    "assumptions_used": [
+      "Smoking adjustment: -20% healing velocity",
+      "Diabetes adjustment: -30% healing velocity",
+      "Reference-normalized area (1-euro coin benchmark)"
+    ],
+    "simulated_area_cm2": 0.0,
+    "reference_curve": [
+      15.0,
+      14.62
+    ],
+    "extrapolated_curve": [
+      15.0,
+      14.62,
+      14.24,
+      13.86,
+      13.48
+    ],
+    "completion_window_days": [
+      0.0,
+      0.0
+    ],
+    "confidence": "LOW"
+  },
+  "limitations": [
+    "Single-image analysis per capture",
+    "No explicit image registration across observations",
+    "Lighting normalized, not fully corrected",
+    "Simulation outputs have LOW confidence"
+  ],
+  "flags": {
+    "demo_mode": true,
+    "fallback_segmentation": true,
+    "research_mode": true
+  },
+  "metadata": {
+    "analysis_id": "9998436d-8b86-492c-97da-13ba6ae86301",
+    "captured_at": "2026-01-31T20:49:30.171638Z",
+    "day_index": 1,
+    "observation_count": 5
+  }
+}
