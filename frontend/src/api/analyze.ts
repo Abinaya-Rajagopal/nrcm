@@ -24,6 +24,7 @@ export interface MeasurementData {
   trajectory: TrajectoryData;
   alert_reason: string | null;
   deviation_cm2: number;
+  image_url?: string;
 }
 
 export interface SimulationData {

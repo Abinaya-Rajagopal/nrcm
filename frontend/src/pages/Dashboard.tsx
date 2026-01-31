@@ -54,19 +54,21 @@ export const Dashboard: React.FC = () => {
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('clinician');
 
+  // Timeline state
+  const [selectedDay, setSelectedDay] = useState(1); // Default to Day 1 initially
+  const [observations, setObservations] = useState<{ day: number, img: string }[]>([]);
+
   // Simulation state - OFF by default (Layer B hidden)
   const [simulationMode, setSimulationMode] = useState(false);
 
-  // Timeline state
-  const [selectedDay, setSelectedDay] = useState(5); // Default to latest day
-
-  // Image upload state
-  const [currentImage, setCurrentImage] = useState(AFTER_IMAGE);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
   useEffect(() => {
-    fetchData();
+    // Only fetch if we have images, otherwise wait for upload
+    if (observations.length > 0) {
+        fetchData();
+    }
   }, [simulationMode]);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -74,14 +76,23 @@ export const Dashboard: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        setCurrentImage(base64String); // Update visual
-        fetchData(base64String);
+        
+        // Append new observation
+        const newDayIndex = observations.length + 1;
+        const newObs = { day: newDayIndex, img: base64String };
+        const updatedObs = [...observations, newObs];
+        
+        setObservations(updatedObs);
+        setSelectedDay(newDayIndex); // Auto-select latest
+        
+        // Pass specifically this image for analysis
+        fetchData(base64String, updatedObs);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const fetchData = async (customImageBase64?: string) => {
+  const fetchData = async (customImageBase64?: string, currentObservations?: { day: number, img: string }[]) => {
     try {
       setLoading(true);
       setError(null);
@@ -94,16 +105,19 @@ export const Dashboard: React.FC = () => {
         requestData.image_base64 = customImageBase64;
         requestData.use_demo_image = false;
       } else {
-        requestData.use_demo_image = true;
+        // If no specific image passed, use the latest one from state
+        const obsToUse = currentObservations || observations;
+        if (obsToUse.length > 0) {
+            requestData.image_base64 = obsToUse[obsToUse.length - 1].img;
+            requestData.use_demo_image = false;
+        } else {
+            requestData.use_demo_image = true;
+        }
       }
 
       const response = await analyzeWound(requestData);
       setData(response);
       
-      // Reset selected day to latest when data loads
-      if (response?.measurement?.trajectory?.actual?.length) {
-        setSelectedDay(response.measurement.trajectory.actual.length);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -114,6 +128,13 @@ export const Dashboard: React.FC = () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // COMPUTED VALUES
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // Resolve Images for Comparison
+  // CRITICAL FIX: Left is ALWAYS Day 1 (Baseline). Right is Day N (Selected).
+  const baselineImage = observations.length > 0 ? observations[0].img : BEFORE_IMAGE;
+  const currentImage = observations.length > 0 
+    ? (observations[selectedDay - 1]?.img || observations[observations.length - 1].img) 
+    : AFTER_IMAGE;
 
   // Get metrics for selected day
   const getMetricsForDay = (day: number) => {
@@ -496,7 +517,7 @@ export const Dashboard: React.FC = () => {
             </h2>
           </div>
           <ComparisonSlider
-            beforeImage={BEFORE_IMAGE}
+            beforeImage={baselineImage}
             afterImage={currentImage}
             beforeLabel="Day 1"
             afterLabel={`Day ${selectedDay}`}
@@ -596,7 +617,7 @@ export const Dashboard: React.FC = () => {
               </h2>
             </div>
             <ComparisonSlider
-              beforeImage={BEFORE_IMAGE}
+              beforeImage={baselineImage}
               afterImage={currentImage}
               beforeLabel="Day 1"
               afterLabel={`Day ${selectedDay}`}
