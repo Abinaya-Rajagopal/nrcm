@@ -9,7 +9,7 @@ NO training, NO fine-tuning, NO dataset loading.
 """
 
 import os
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Any
 import numpy as np
 
 # Lazy imports for optional dependencies
@@ -269,7 +269,7 @@ def _generate_demo_masks(
     image_shape: Tuple[int, int], 
     point: Tuple[int, int],
     radius: int = 80
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, Any]:
     """
     Generate simple circular masks for demo/fallback mode.
     
@@ -279,7 +279,7 @@ def _generate_demo_masks(
         radius: Radius of the circular wound mask
         
     Returns:
-        Dict with 'wound_mask' and 'peri_wound_mask'
+        Dict with 'wound_mask', 'peri_wound_mask', and reliability metadata.
     """
     cv2 = _ensure_cv2()
     
@@ -299,7 +299,9 @@ def _generate_demo_masks(
     
     return {
         'wound_mask': wound_mask,
-        'peri_wound_mask': peri_wound_mask
+        'peri_wound_mask': peri_wound_mask,
+        'segmentation_mode': 'fallback',
+        'area_reliable': False
     }
 
 
@@ -345,7 +347,7 @@ def segment_wound(
     image: np.ndarray,
     point: Tuple[int, int],
     demo_mode: bool
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, Any]:
     """
     Segment wound and generate peri-wound mask.
     
@@ -356,8 +358,10 @@ def segment_wound(
         
     Returns:
         Dict with:
-            - 'wound_mask': Binary mask (0/1), shape (H, W), dtype uint8
-            - 'peri_wound_mask': Binary mask (0/1), shape (H, W), dtype uint8
+            - 'wound_mask': Binary mask
+            - 'peri_wound_mask': Binary mask
+            - 'segmentation_mode': 'model' or 'fallback'
+            - 'area_reliable': boolean
     """
     _ensure_cv2()
     
@@ -392,7 +396,9 @@ def segment_wound(
     
     return {
         'wound_mask': wound_mask,
-        'peri_wound_mask': peri_wound_mask
+        'peri_wound_mask': peri_wound_mask,
+        'segmentation_mode': 'model',
+        'area_reliable': True
     }
 
 

@@ -130,26 +130,56 @@ def compute_metrics(
     image_bgr: np.ndarray,
     wound_mask: np.ndarray,
     peri_wound_mask: np.ndarray,
-) -> Dict[str, float]:
+    segmentation_mode: str = "unknown"
+) -> Dict[str, Any]:
     """
     Compute all metrics, honoring DEMO_MODE by returning mock values
     without running image processing when enabled.
+    
+    Includes metadata about segmentation reliability.
     """
     if DEMO_MODE:
         return {
             "area_cm2": 12.4,
             "redness_pct": 18.2,
             "pus_pct": 4.1,
+            "segmentation_mode": "mock",
+            "area_reliable": False
         }
+
+    # Defensive checks (Person 3 validation)
+    if image_bgr is None:
+        raise ValueError("compute_metrics: image_bgr cannot be None")
+    if wound_mask is None:
+        raise ValueError("compute_metrics: wound_mask cannot be None")
+    if peri_wound_mask is None:
+        raise ValueError("compute_metrics: peri_wound_mask cannot be None")
+
+    if image_bgr.ndim != 3:
+        # Some OpenCV versions might load grayscale as 2D, but we expect BGR
+        raise ValueError(f"compute_metrics: image_bgr must be 3-channel (H, W, 3), got {image_bgr.shape}")
+    
+    h, w = image_bgr.shape[:2]
+
+    if wound_mask.shape != (h, w):
+        raise ValueError(f"compute_metrics: wound_mask shape {wound_mask.shape} does not match image {(h, w)}")
+    
+    if peri_wound_mask.shape != (h, w):
+        raise ValueError(f"compute_metrics: peri_wound_mask shape {peri_wound_mask.shape} does not match image {(h, w)}")
 
     area_cm2 = calculate_wound_area(wound_mask)
     redness_pct = calculate_redness(image_bgr, peri_wound_mask)
     pus_pct = calculate_exudate(image_bgr, wound_mask)
 
+    # Identical area values are acceptable if segmentation_mode == "fallback"
+    # because the fallback mask is a fixed-radius circle.
+
     return {
         "area_cm2": area_cm2,
         "redness_pct": redness_pct,
         "pus_pct": pus_pct,
+        "segmentation_mode": segmentation_mode,
+        "area_reliable": (segmentation_mode == "model")
     }
 
 
@@ -160,13 +190,15 @@ def calculate_metrics(segmentation_result: Dict[str, Any]) -> Dict[str, Any]:
     
     Args:
         segmentation_result: Output from segmentation service containing
-                             image_bgr, wound_mask, peri_wound_mask
+                             image_bgr, wound_mask, peri_wound_mask,
+                             and optional segmentation_mode
     
     Returns:
-        Dict containing area_cm2, redness_pct, pus_pct
+        Dict containing area_cm2, redness_pct, pus_pct, and metadata
     """
     image = segmentation_result.get("image_bgr")
     wound_mask = segmentation_result.get("wound_mask")
     peri_wound_mask = segmentation_result.get("peri_wound_mask")
+    segmentation_mode = segmentation_result.get("segmentation_mode", "unknown")
 
-    return compute_metrics(image, wound_mask, peri_wound_mask)
+    return compute_metrics(image, wound_mask, peri_wound_mask, segmentation_mode)
