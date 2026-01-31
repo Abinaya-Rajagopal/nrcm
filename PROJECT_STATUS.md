@@ -117,121 +117,235 @@ Ensure demo images load correctly when camera input fails. Polish UI presentatio
 
 ---
 
-## Team Work Allocation
+# Features Roadmap & Team Work Allocation
 
-### Person 1 — Backend Orchestration and Integration
+This document defines:
+- The **final feature set** to be added to the project
+- What is explicitly **out of scope**
+- A clear, equal **work distribution across 6 team members**
 
-**Responsibilities:**
-- Own the `/analyze` endpoint in `backend/app/routes/analyze.py`
-- Combine outputs from segmentation, metrics, and trajectory services
-- Maintain DEMO_MODE fallback behavior
-- Final backend integration and testing
+This file is for **internal coordination** and should be treated as a **working contract**.
+
+---
+
+## Selected Features to Add (LOCKED)
+
+The following features are **approved for implementation**.  
+They are chosen for **high impact, low risk, and hackathon feasibility**.
+
+### Feature 1: Progressive Explanation System (Explainable AI)
+
+**Description**  
+Every result exposes 3 levels of explanation:
+- Level 1: Simple status (e.g., "Healing normally")
+- Level 2: Why it matters (plain-language reasoning)
+- Level 3: How it was calculated (rules + logic, not equations)
+
+**Why it matters**
+- Demonstrates Explainable AI (XAI)
+- Builds judge trust
+- Reduces "black box" perception
+
+---
+
+### Feature 2: Before / After Comparison Slider
+
+**Description**
+- Interactive slider comparing Day 1 vs Latest image
+- Shows visible healing progression
+- Displays % area reduction or increase
+
+**Why it matters**
+- Strong visual impact
+- Shows temporal reasoning
+- Easy to understand in a live demo
+
+---
+
+### Feature 3: Explainable Alert Cards
+
+**Description**
+Instead of generic alerts, show explicit reasons:
+- "Wound area increased by 6% over last 48 hours"
+- "Peri-wound redness increased by 18%"
+
+**Why it matters**
+- Transparent decision-making
+- Clinically intuitive
+- Reinforces trust in alerts
+
+---
+
+## Optional Enhancements (Only If Time Permits)
+
+These features may be added **only after** the core three above are complete.
+
+### Confidence Bands on Healing Trajectory
+- Upper and lower tolerance range around expected curve
+- Visual shaded region on chart
+
+### Visual Change Heatmap
+- Pixel-wise difference between consecutive days
+- Highlights regions of stalled or worsening healing
+
+---
+
+## Explicitly Out of Scope (DO NOT IMPLEMENT)
+
+The following are **intentionally excluded** to avoid credibility and scope risks:
+
+- Infection diagnosis or prediction
+- Clinical accuracy claims
+- Deep learning classifiers
+- Healing completion date prediction
+- One-tap report sharing (PDF/email)
+- Real-time continuous monitoring
+- Regulatory or deployment claims
+- Patient risk factor personalization
+
+If any of these appear in code or slides, they must be removed.
+
+---
+
+## Team Work Allocation (Equal Split Across 6 People)
+
+Each person owns a **distinct, non-overlapping slice** of the system.
+
+---
+
+### Person 1 — Backend Integration & Orchestration
+
+**Primary Responsibility**
+- Own `/api/v1/analyze` orchestration logic
+
+**Tasks**
+- Replace mock pipeline with real service calls
+- Integrate:
+  - segmentation
+  - metrics
+  - trajectory
+- Preserve DEMO_MODE fallback
+- Ensure locked API contract is respected
 
 **Primary Files:**
 - `backend/app/routes/analyze.py`
 - `backend/app/main.py`
 - `backend/app/config.py`
 
-**Not Responsible For:**
-- Implementing segmentation algorithms
-- Implementing metric extraction algorithms
-- Frontend code
+**Does NOT work on**
+- Frontend UI
+- CV internals
 
 ---
 
 ### Person 2 — Segmentation (Computer Vision)
 
-**Responsibilities:**
-- Implement MobileSAM inference pipeline
-- Generate wound mask from input image
-- Generate peri-wound region mask
-- Ensure deterministic and reproducible output
+**Primary Responsibility**
+- Wound and peri-wound segmentation
+
+**Tasks**
+- Integrate MobileSAM inference
+- Handle point prompts
+- Generate:
+  - wound mask
+  - peri-wound mask (20px dilation)
 
 **Primary Files:**
 - `backend/app/services/segmentation.py`
 
-**Not Responsible For:**
-- Metric calculation from masks
-- Trajectory modeling
-- Frontend visualization of masks
+**Does NOT work on**
+- Metrics
+- Trajectory
+- Frontend
 
 ---
 
-### Person 3 — Metric Computation (OpenCV)
+### Person 3 — Metric Computation (OpenCV / HSV)
 
-**Responsibilities:**
-- Compute wound area in cm² from segmentation mask
-- Calculate redness percentage using HSV analysis
-- Calculate exudate/pus percentage using HSV analysis
-- Implement risk indicator heuristic based on thresholds
+**Primary Responsibility**
+- Quantitative healing metrics
+
+**Tasks**
+- HSV conversion
+- Compute:
+  - wound area (cm²)
+  - redness %
+  - pus %
+- Implement heuristic risk score
 
 **Primary Files:**
 - `backend/app/services/metrics.py`
 - `backend/app/config.py` (risk thresholds only)
 
-**Not Responsible For:**
-- Generating segmentation masks
-- Trajectory prediction
-- Frontend rendering
+**Does NOT work on**
+- Segmentation
+- UI
+- Trajectory
 
 ---
 
-### Person 4 — Healing Trajectory and Alert Logic
+### Person 4 — Healing Trajectory & Alert Logic
 
-**Responsibilities:**
-- Implement Gilman healing model for expected trajectory
-- Calculate expected vs actual trajectory comparison
+**Primary Responsibility**
+- Temporal reasoning and alerts
+
+**Tasks**
+- Implement Gilman healing curve
+- Compare expected vs actual
 - Determine risk level (GREEN / AMBER / RED)
-- Generate alert reason text based on deviation patterns
+- Generate explainable alert reasons
 
 **Primary Files:**
 - `backend/app/services/trajectory.py`
 - `shared/constants.md` (risk level definitions)
 
-**Not Responsible For:**
-- Segmentation
-- Metric extraction
-- Frontend chart rendering
+**Does NOT work on**
+- CV
+- Frontend UI
 
 ---
 
-### Person 5 — Frontend Data and State Integration
+### Person 5 — Frontend Data & State Integration
 
-**Responsibilities:**
-- Connect frontend to `/analyze` endpoint
-- Manage loading, error, and success states
-- Handle demo mode indicator display
-- Normalize and validate backend response for UI consumption
+**Primary Responsibility**
+- Frontend–backend data flow
+
+**Tasks**
+- Consume `/analyze` API
+- Handle loading, error, demo states
+- Normalize backend response for UI components
 
 **Primary Files:**
 - `frontend/src/api/analyze.ts`
 - `frontend/src/pages/Dashboard.tsx`
 - `frontend/src/config.ts`
 
-**Not Responsible For:**
-- Component styling or layout
-- Chart rendering logic
-- Backend implementation
+**Does NOT work on**
+- Backend logic
+- Visual design polish
 
 ---
 
-### Person 6 — Frontend Visualization and Overlay
+### Person 6 — Frontend Visualization & UX Features
 
-**Responsibilities:**
-- Metrics cards UI refinement
-- Trajectory chart rendering and styling
-- Risk badge display with appropriate colors
-- Segmentation overlay visualization (when available)
+**Primary Responsibility**
+- User-facing visual features
+
+**Tasks**
+- Metrics cards
+- Trajectory chart rendering
+- Before/After comparison slider
+- Progressive explanation UI
+- Explainable alert cards
 
 **Primary Files:**
 - `frontend/src/components/MetricsCard.tsx`
 - `frontend/src/components/TrajectoryChart.tsx`
 - `frontend/src/pages/Dashboard.tsx` (UI sections only)
 
-**Not Responsible For:**
-- API client implementation
-- State management
-- Backend services
+**Does NOT work on**
+- Backend
+- API design
 
 ---
 
@@ -244,6 +358,19 @@ Ensure demo images load correctly when camera input fails. Polish UI presentatio
 3. **DEMO_MODE must never break.** All implementations must preserve the ability to return mock data when `DEMO_MODE = True`. This ensures frontend development is never blocked.
 
 4. **Changes require coordination.** Modifications to shared files (`schemas.py`, `api_contract.md`, `constants.md`) require team discussion before committing.
+
+5. **No scope expansion without team agreement.**
+
+---
+
+## Success Criteria
+
+This feature phase is successful if:
+- Demo runs deterministically
+- Judges can understand results in <30 seconds
+- Every alert is explainable
+- Visual change over time is obvious
+- All 6 members contribute code
 
 ---
 
@@ -262,7 +389,12 @@ Ensure demo images load correctly when camera input fails. Polish UI presentatio
 | Trajectory logic | Not started |
 | Backend orchestration | Stub only |
 | Frontend integration | Mock only |
+| Progressive Explanation System | Not started |
+| Before/After Comparison Slider | Not started |
+| Explainable Alert Cards | Not started |
 
 ---
+
+**This document defines the final execution scope.**
 
 *Last updated: 2026-01-31*
