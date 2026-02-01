@@ -15,12 +15,11 @@ import React, { useEffect, useState } from 'react';
 import { MeasuredMetricsCard, RiskBadge, ChangeIndicator } from '../components/LayerA';
 
 // Layer B Components
-import { SimulatedMetricsCard, SimulationInputsPanel, HealingWindow } from '../components/LayerB';
+import { SimulationInputsPanel, HealingWindow } from '../components/LayerB';
 
 // Shared Components
 import { TrajectoryChart } from '../components/TrajectoryChart';
 import { ComparisonSlider } from '../components/ComparisonSlider';
-import { SimulationToggle } from '../components/SimulationToggle';
 import { WarningBanner } from '../components/WarningBanner';
 import { ViewModeToggle, type ViewMode } from '../components/ViewModeToggle';
 import { MeasurementLabel } from '../components/MeasurementLabel';
@@ -30,8 +29,17 @@ import { AlertCard } from '../components/AlertCard';
 import { LoadingSkeleton, MetricSkeleton, ChartSkeleton } from '../components/LoadingSkeleton';
 import { TrendIndicator } from '../components/TrendIndicator';
 
+import { config } from '../config';
+
 // API & Data
-import { analyzeWound, type AnalyzeResponse, type PatientMetadata } from '../api/analyze';
+import { 
+  analyzeWound, 
+  analyzeWoundDebug, 
+  type AnalyzeResponse, 
+  type DebugAnalyzeResponse,
+  type PatientMetadata 
+} from '../api/analyze';
+import { VisualExplanation } from '../components/VisualExplanation';
 import { calculateMetricsForDay } from '../utils/metricLogic';
 import {
   colors,
@@ -49,6 +57,7 @@ const AFTER_IMAGE = "https://placehold.co/800x600/cbd5e1/1e293b?text=Day+5:+Curr
 export const Dashboard: React.FC = () => {
   // Core data state
   const [data, setData] = useState<AnalyzeResponse | null>(null);
+  const [debugData, setDebugData] = useState<DebugAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +74,7 @@ export const Dashboard: React.FC = () => {
   }[]>([]);
 
   // Simulation state - OFF by default (Layer B hidden)
-  const [simulationMode, setSimulationMode] = useState(false);
+  const [simulationMode] = useState(false);
   
   // Session State
   const generateNewSessionId = () => {
@@ -106,7 +115,7 @@ export const Dashboard: React.FC = () => {
   // Fetch initial data on load
   useEffect(() => {
     fetchData();
-  }, [simulationMode]);
+  }, [simulationMode, viewMode]);
 
   // Camera State
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -252,7 +261,17 @@ export const Dashboard: React.FC = () => {
         }
       }
 
-      const response = await analyzeWound(requestData);
+      let response: AnalyzeResponse;
+      
+      if (viewMode === 'clinician' && !config.DEMO_MODE) {
+        const debugResponse = await analyzeWoundDebug(requestData);
+        response = debugResponse.results;
+        setDebugData(debugResponse);
+      } else {
+        response = await analyzeWound(requestData);
+        setDebugData(null);
+      }
+      
       setData(response);
       
       // Update the correctly corresponding observation with these metrics
@@ -1077,6 +1096,16 @@ export const Dashboard: React.FC = () => {
                 height={380}
               />
             </section>
+          )}
+
+          {/* VISUAL EXPLANATION OVERLAYS (Clinician Only) */}
+          {viewMode === 'clinician' && !data.flags.demo_mode && (
+            <VisualExplanation
+              originalImage={currentImage}
+              segmentation={debugData?.segmentation || null}
+              heatmaps={debugData?.heatmaps || null}
+              isVisible={viewMode === 'clinician'}
+            />
           )}
 
           {/* Healing Trajectory Chart */}

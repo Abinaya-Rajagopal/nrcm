@@ -449,6 +449,54 @@ def apply_change_heatmap_overlay(
     return np.clip(blended, 0, 255).astype(np.uint8)
 
 
+def get_colored_heatmap(
+    heatmap: np.ndarray,
+    colormap: str = "jet"
+) -> np.ndarray:
+    """
+    Apply colormap to a heatmap and return as RGB uint8.
+    
+    Args:
+        heatmap: Heatmap values (H, W), float32 in [0, 1]
+        colormap: OpenCV colormap name
+        
+    Returns:
+        RGB image (H, W, 3), dtype uint8
+    """
+    cv2 = _ensure_cv2()
+    
+    if heatmap is None:
+        return None
+        
+    # Ensure heatmap is in range [0, 255] for colormap
+    heatmap_uint8 = (np.clip(heatmap, 0, 1) * 255).astype(np.uint8)
+    
+    # Select colormap
+    colormap_dict = {
+        "jet": cv2.COLORMAP_JET,
+        "hot": cv2.COLORMAP_HOT,
+        "rainbow": cv2.COLORMAP_RAINBOW,
+        "inferno": cv2.COLORMAP_INFERNO,
+        "viridis": cv2.COLORMAP_VIRIDIS,
+    }
+    cv_colormap = colormap_dict.get(colormap, cv2.COLORMAP_JET)
+    
+    # Apply colormap (returns BGR)
+    heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv_colormap)
+    heatmap_colored_rgb = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
+    
+    # Create RGBA image
+    h, w = heatmap.shape
+    heatmap_rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    heatmap_rgba[:, :, :3] = heatmap_colored_rgb
+    
+    # Set alpha: 0 where heatmap is 0, 255 elsewhere
+    # (Note: we use a small threshold to avoid float precision issues)
+    heatmap_rgba[:, :, 3] = (heatmap > 0.001).astype(np.uint8) * 255
+    
+    return heatmap_rgba
+
+
 # ============================================================
 # HEATMAP AVAILABILITY CHECK
 # ============================================================

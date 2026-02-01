@@ -331,9 +331,11 @@ def _validate_mask(mask: np.ndarray, image_shape: Tuple[int, int]) -> bool:
     if mask_sum == 0:
         return False
     
-    # Check mask is not the entire image (>90% coverage is suspicious)
+    # Check mask is not the entire image (>40% coverage is suspicious for a wound)
+    # Why: If the mask is huge, it's likely selecting the whole limb or skin area,
+    # which ruins the peri-wound inflammation analysis.
     total_pixels = image_shape[0] * image_shape[1]
-    if mask_sum > 0.9 * total_pixels:
+    if mask_sum > 0.4 * total_pixels:
         return False
     
     return True
@@ -357,9 +359,10 @@ def _segment_by_color(image: np.ndarray) -> Optional[np.ndarray]:
             return None
 
         # Broad Red/Pink range (Wound bed colors)
+        # Syncing with RED_HUE constants in config.py
         lower_red1 = np.array([0, 30, 30])
-        upper_red1 = np.array([20, 255, 255])
-        lower_red2 = np.array([160, 30, 30])
+        upper_red1 = np.array([25, 255, 255])
+        lower_red2 = np.array([120, 30, 30])
         upper_red2 = np.array([180, 255, 255])
 
         mask1 = cv2.inRange(hsv, lower_red1, upper_red1)

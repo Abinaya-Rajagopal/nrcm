@@ -66,11 +66,12 @@ def determine_risk_level(
     # 1. Check RED criteria (Critical)
     if area_change > RISK_THRESHOLDS["RED"]["area_change_pct"]:
         level = "RED"
-        reasons.append(f"Wound area increased by {area_change:.1f}% (stalled/regression)")
+        reasons.append(f"Wound area increased by {area_change:.1f}% (regression)")
     
-    if redness_pct > RISK_THRESHOLDS["RED"]["redness_max"] or redness_pct > 30:
+    # Priority: High inflammation/redness is a critical signal (Person 2 clinical rule)
+    if redness_pct > RISK_THRESHOLDS["RED"]["redness_max"] or redness_pct > 40:
         level = "RED"
-        reasons.append(f"Intense peri-wound redness ({redness_pct}%)")
+        reasons.append(f"Severe inflammation/bruising detected ({redness_pct}%)")
         
     if pus_pct > 15: # Custom red threshold for pus
         level = "RED"

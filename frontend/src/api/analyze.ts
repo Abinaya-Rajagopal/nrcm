@@ -10,7 +10,6 @@
 import { API_ENDPOINTS, config } from '../config';
 
 // Response Types (matching backend schema)
-// Response Types (matching backend schema)
 export interface TrajectoryData {
   expected: number[];
   actual: number[];
@@ -51,6 +50,28 @@ export interface AnalyzeResponse {
     captured_at: string;
     observation_count: number;
   };
+}
+
+export interface DebugSegmentationInfo {
+  wound_mask_base64: string;
+  peri_wound_mask_base64: string;
+  combined_viz_base64: string;
+  used_model: boolean;
+  fallback: boolean;
+}
+
+export interface DebugHeatmapData {
+  enabled: boolean;
+  reason?: string;
+  redness_heatmap_base64?: string;
+  exudate_heatmap_base64?: string;
+  change_heatmap_base64?: string;
+}
+
+export interface DebugAnalyzeResponse {
+  results: AnalyzeResponse;
+  segmentation: DebugSegmentationInfo;
+  heatmaps: DebugHeatmapData;
 }
 
 export interface PatientMetadata {
@@ -112,19 +133,10 @@ const DEMO_RESPONSE: AnalyzeResponse = {
 
 /**
  * Call the /analyze endpoint
- * 
- * Falls back to demo data if:
- * - DEMO_MODE is enabled in config
- * - Backend is unreachable
- * 
- * @param request - Optional request parameters
- * @returns AnalyzeResponse with wound metrics
  */
 export async function analyzeWound(request?: AnalyzeRequest): Promise<AnalyzeResponse> {
-  // If demo mode is enabled, return mock data directly
   if (config.DEMO_MODE) {
     console.log('[API] Demo mode enabled - using mock data');
-    // Simulate network delay for realistic feel
     await new Promise(resolve => setTimeout(resolve, 800));
     return DEMO_RESPONSE;
   }
@@ -144,9 +156,49 @@ export async function analyzeWound(request?: AnalyzeRequest): Promise<AnalyzeRes
 
     return response.json();
   } catch (error) {
-    // Fallback to demo data if backend is unreachable
     console.warn('[API] Backend unreachable, falling back to demo data:', error);
     return DEMO_RESPONSE;
+  }
+}
+
+/**
+ * Call the /analyze/debug endpoint for visual explanations
+ */
+export async function analyzeWoundDebug(request?: AnalyzeRequest): Promise<DebugAnalyzeResponse> {
+  if (config.DEMO_MODE) {
+    return {
+      results: DEMO_RESPONSE,
+      segmentation: {
+        wound_mask_base64: '',
+        peri_wound_mask_base64: '',
+        combined_viz_base64: '',
+        used_model: false,
+        fallback: true
+      },
+      heatmaps: {
+        enabled: false,
+        reason: 'Disabled in demo mode'
+      }
+    };
+  }
+
+  try {
+    const response = await fetch(`${API_ENDPOINTS.analyze}/debug`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request || { use_demo_image: true }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.warn('[API] Debug endpoint unreachable');
+    throw error;
   }
 }
 

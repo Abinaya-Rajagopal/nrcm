@@ -45,6 +45,7 @@ from ..services.trajectory import (
 from ..services.heatmaps import (
     generate_redness_heatmap,
     generate_exudate_heatmap,
+    get_colored_heatmap,
     apply_heatmap_overlay
 )
 from ..services.simulation import run_hypothetical_simulation
@@ -94,9 +95,11 @@ def _get_demo_image() -> np.ndarray:
 @router.get("/health")
 async def health_check():
     """Technical health check for infrastructure monitoring."""
+    from ..services.segmentation import _get_predictor
+    predictor = _get_predictor()
     return {
         "status": "ok",
-        "model_loaded": True,
+        "model_loaded": predictor.model_loaded if predictor else False,
         "simulation_enabled": True,
         "demo_mode": DEMO_MODE
     }
@@ -160,7 +163,7 @@ async def _execute_core_pipeline(request: AnalyzeRequest) -> Dict[str, Any]:
     
     wound_mask = seg_result['wound_mask']
     peri_mask = seg_result['peri_wound_mask']
-    fallback_flag = DEMO_MODE # Simplified for current logic
+    fallback_flag = seg_result.get('segmentation_mode') != 'model'
     
     # 3. ASSEMBLE ADAPTED RESPONSE
     # 3. ASSEMBLE ADAPTED RESPONSE
@@ -199,7 +202,26 @@ async def _execute_core_pipeline(request: AnalyzeRequest) -> Dict[str, Any]:
     viz[wound_mask == 1] = viz[wound_mask == 1] * 0.5 + np.array([0, 255, 0]) * 0.5
     viz[peri_mask == 1] = viz[peri_mask == 1] * 0.5 + np.array([255, 0, 0]) * 0.5
 
-    heatmap_info = DebugHeatmapData(enabled=False, reason="Disabled for visual safety")
+    # Generate Heatmaps ONLY if NOT in demo mode (real pixels available)
+    # We allow them even in fallback mode so the clinician view remains functional.
+    if not DEMO_MODE:
+        try:
+            r_heat = generate_redness_heatmap(image_rgb, peri_mask)
+            e_heat = generate_exudate_heatmap(image_rgb, wound_mask)
+            
+            heatmap_info = DebugHeatmapData(
+                enabled=True,
+                redness_heatmap_base64=_numpy_to_base64(get_colored_heatmap(r_heat, "jet"), format='PNG'),
+                exudate_heatmap_base64=_numpy_to_base64(get_colored_heatmap(e_heat, "jet"), format='PNG'),
+                reason="Metric-derived visual explanation"
+            )
+        except Exception as e:
+            heatmap_info = DebugHeatmapData(enabled=False, reason=f"Heatmap generation error: {str(e)}")
+    else:
+        heatmap_info = DebugHeatmapData(
+            enabled=False, 
+            reason="Detailed visual overlays are unavailable in DEMO_MODE."
+        )
 
     return {
         "results": layered_response,

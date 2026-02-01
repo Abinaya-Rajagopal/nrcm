@@ -19,26 +19,25 @@ DEMO_IMAGES_PRIMARY = "demo_assets/wound_images/primary"
 DEMO_IMAGES_FALLBACK = "demo_assets/wound_images/fallback"
 
 # Risk Level Thresholds (heuristic, not diagnostic)
-# Loosened to allow for normal early post-op swelling and measurement noise.
+# Tightened to catch any regression or inflammation immediately.
 RISK_THRESHOLDS = {
-    "GREEN": {"area_change_pct": 3, "redness_max": 20, "pus_max": 10},
-    "AMBER": {"area_change_pct": 10, "redness_max": 35, "pus_max": 20},
-    "RED": {"area_change_pct": 100, "redness_max": 100, "pus_max": 100},
+    "GREEN": {"area_change_pct": 1.0, "redness_max": 10.0, "pus_max": 4.0},
+    "AMBER": {"area_change_pct": 5.0, "redness_max": 20.0, "pus_max": 10.0},
+    "RED": {"area_change_pct": 10.0, "redness_max": 35.0, "pus_max": 20.0},
 }
 
 # ----- Metric Calibration & Thresholds (heuristic only) -----
 # Pixel-to-area calibration: number of pixels per square centimeter.
-# This is a fixed constant to ensure deterministic area estimates without camera metadata.
 PIXELS_PER_CM2 = 120.0
 
-# Redness detection thresholds (OpenCV HSV ranges)
-# Hue range for red wraps around HSV [0,179] in OpenCV, so we use two intervals.
+# Inflammation/Redness detection thresholds (OpenCV HSV ranges)
+# High sensitivity: includes bright reds and deep, muddy purples/bruising.
 RED_HUE_LOW_1 = 0
-RED_HUE_HIGH_1 = 10
-RED_HUE_LOW_2 = 170
+RED_HUE_HIGH_1 = 25
+RED_HUE_LOW_2 = 120   # Expanded to catch full purple/magenta spectrum
 RED_HUE_HIGH_2 = 180
-# Minimum saturation to avoid counting pale skin tones as red (0-255 scale)
-RED_SAT_MIN = 80
+# Minimum saturation: Lowered to catch 'muddy' or pale bruising.
+RED_SAT_MIN = 35      # High sensitivity for discoloration
 
 # Pus/exudate detection thresholds (heuristic)
 # Low saturation and high value highlight whitish/yellowish regions typical of exudate.
