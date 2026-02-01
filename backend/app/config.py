@@ -19,10 +19,11 @@ DEMO_IMAGES_PRIMARY = "demo_assets/wound_images/primary"
 DEMO_IMAGES_FALLBACK = "demo_assets/wound_images/fallback"
 
 # Risk Level Thresholds (heuristic, not diagnostic)
+# Loosened to allow for normal early post-op swelling and measurement noise.
 RISK_THRESHOLDS = {
-    "GREEN": {"area_change_pct": -5, "redness_max": 15, "pus_max": 2},
-    "AMBER": {"area_change_pct": 0, "redness_max": 25, "pus_max": 8},
-    "RED": {"area_change_pct": 5, "redness_max": 100, "pus_max": 100},
+    "GREEN": {"area_change_pct": 3, "redness_max": 20, "pus_max": 10},
+    "AMBER": {"area_change_pct": 10, "redness_max": 35, "pus_max": 20},
+    "RED": {"area_change_pct": 100, "redness_max": 100, "pus_max": 100},
 }
 
 # ----- Metric Calibration & Thresholds (heuristic only) -----

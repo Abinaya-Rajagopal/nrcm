@@ -45,7 +45,8 @@ def build_frontend_response(
     metadata: Optional[PatientMetadata],
     demo_mode: bool,
     fallback_used: bool,
-    enable_simulation: bool = True
+    enable_simulation: bool = True,
+    session_id: str = "default"
 ) -> AnalyzeResponse:
     """
     Adapter function that collects outputs and packages them into the stable response schema.
@@ -55,28 +56,30 @@ def build_frontend_response(
     # 1. Measurement (Layer A) - Ground Truth
     metrics_data = get_debug_metrics(image_rgb, wound_mask, peri_mask)
     current_area = metrics_data['area_cm2']
+
+    # Rule 8: Guardrails - Validate Inference Outputs
+    # Fail loudly if critical metrics are missing or invalid
+    if None in [current_area, metrics_data['redness_pct'], metrics_data['pus_pct']] or \
+       np.isnan(current_area) or np.isnan(metrics_data['redness_pct']):
+         raise ValueError("CRITICAL: Inference pipeline produced invalid/missing metrics.")
     
     # MULTI-DAY TRAJECTORY LOGIC
     # Retrieve full history including the measurement we just added
-    history = get_history()
+    history = get_history(session_id)
     
     # Construct "Actual" trajectory from history
     actual = [obs["area"] for obs in history]
     
     # Construct "Expected" trajectory (Baseline -> Target)
-    # Target: 50% reduction in 14 days (heuristic)
-    baseline = get_baseline_area()
-    expected = []
+    # Using Gilman Linear Model from trajectory service
+    baseline = get_baseline_area(session_id)
     
-    # If we have history, project from Day 1
-    # If not (this is Day 1), project forward 7 days
-    days_to_project = max(len(actual), 7)
+    # If we have history, project for at least the current length
+    # Ensure we show at least 5 days for visualization context if early
+    days_to_project = max(len(actual), 5)
     
-    for i in range(days_to_project):
-        # ROI: Exponential decay model (0.9^day)
-        expected_val = round(baseline * (0.9 ** i), 2)
-        expected.append(expected_val)
-        
+    expected = calculate_expected_trajectory(initial_area=baseline, days=days_to_project)
+    
     # Get previous area for risk calc (Day N-1)
     if len(actual) > 1:
         prev_area = actual[-2]
@@ -84,22 +87,38 @@ def build_frontend_response(
         prev_area = current_area # Day 1
     
     # Calculate Risk based on LATEST change
-    risk_assessment = determine_risk_level(
-        current_area=current_area,
-        previous_area=prev_area,
-        redness_pct=metrics_data['redness_pct'],
-        pus_pct=metrics_data['pus_pct']
-    )
+    # RULE 6: Re-enable Baseline Logic (Correctly)
+    # If only one observation (Day 1), enforce 0 delta/change
+    if len(actual) == 1:
+        prev_area = current_area
+        risk_assessment = {
+             "risk_level": "GREEN", 
+             "alert_reasons": [],
+             "logic": "Baseline established."
+        }
+        # Enforce Day 1 zero-change rule
+        metrics_data['redness_pct'] = float(metrics_data['redness_pct']) # Ensure float
+        metrics_data['pus_pct'] = float(metrics_data['pus_pct'])
+    else:
+        # Normal comparison logic
+        prev_area = actual[-2]
+        risk_assessment = determine_risk_level(
+            current_area=current_area,
+            previous_area=prev_area,
+            redness_pct=metrics_data['redness_pct'],
+            pus_pct=metrics_data['pus_pct']
+        )
     
     trajectory = TrajectoryData(expected=expected, actual=actual)
     
     # Deviation Calculation: actual[-1] - expected[day_index]
     # Ensure indices align
     current_day_idx = len(actual) - 1
-    if current_day_idx < len(expected):
+    if current_day_idx < len(expected) and len(actual) > 1:
         target_today = expected[current_day_idx]
         deviation = round(current_area - target_today, 2)
     else:
+        # Day 1 or out of bounds -> 0 deviation
         deviation = 0.0
     
     alert_reason = risk_assessment["alert_reasons"][0] if risk_assessment["alert_reasons"] else None
@@ -136,7 +155,7 @@ def build_frontend_response(
     res_metadata = ResearchMetadata(
         analysis_id=str(uuid.uuid4()),
         captured_at=datetime.utcnow().isoformat() + "Z",
-        day_index=1,
+        day_index=len(actual),
         observation_count=len(actual)
     )
     

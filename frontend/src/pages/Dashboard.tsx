@@ -31,7 +31,8 @@ import { LoadingSkeleton, MetricSkeleton, ChartSkeleton } from '../components/Lo
 import { TrendIndicator } from '../components/TrendIndicator';
 
 // API & Data
-import { analyzeWound, type AnalyzeResponse } from '../api/analyze';
+import { analyzeWound, type AnalyzeResponse, type PatientMetadata } from '../api/analyze';
+import { calculateMetricsForDay } from '../utils/metricLogic';
 import {
   colors,
   typography,
@@ -56,57 +57,193 @@ export const Dashboard: React.FC = () => {
 
   // Timeline state
   const [selectedDay, setSelectedDay] = useState(1); // Default to Day 1 initially
-  const [observations, setObservations] = useState<{ day: number, img: string }[]>([]);
+  const [observations, setObservations] = useState<{ 
+    day: number; 
+    img: string;
+    isDemo: boolean;
+    metrics?: AnalyzeResponse['measurement']; 
+  }[]>([]);
 
   // Simulation state - OFF by default (Layer B hidden)
   const [simulationMode, setSimulationMode] = useState(false);
+  
+  // Session State
+  const generateNewSessionId = () => {
+    const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+    localStorage.setItem('wound_session_id', newId);
+    return newId;
+  };
 
+  const [sessionId, setSessionId] = useState(() => {
+    const stored = localStorage.getItem('wound_session_id');
+    if (stored) return stored;
+    return generateNewSessionId();
+  });
+
+  // Onboarding State
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [patientMetadata, setPatientMetadata] = useState<PatientMetadata>({
+    is_smoker: false,
+    has_diabetes: false,
+    has_reference_object: false
+  });
+  
+  // Temp state for onboarding form
+  const [tempMetadata, setTempMetadata] = useState<PatientMetadata>({
+    is_smoker: false,
+    has_diabetes: false,
+    has_reference_object: false
+  });
+
+  // Upload UI State
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const fileInputGalleryRef = React.useRef<HTMLInputElement>(null);
+  const fileInputCameraRef = React.useRef<HTMLInputElement>(null);
+
+  // Fetch initial data on load
   useEffect(() => {
-    // Only fetch if we have images, otherwise wait for upload
-    if (observations.length > 0) {
-        fetchData();
-    }
+    fetchData();
   }, [simulationMode]);
 
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  // Camera State
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  // Manage Camera Lifecycle
+  useEffect(() => {
+    let currentStream: MediaStream | null = null;
+
+    const startCamera = async () => {
+      if (showCameraModal) {
+        // Guard: Check browser support
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+           setError("Camera API not supported in this browser");
+           setShowCameraModal(false);
+           return;
+        }
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          setStream(currentStream);
+          if (videoRef.current) {
+            videoRef.current.srcObject = currentStream;
+          }
+        } catch (err) {
+          console.error("Camera access error:", err);
+          setError("Unable to access camera. Please check permissions.");
+          setShowCameraModal(false);
+        }
+      }
+    };
+
+    if (showCameraModal) {
+      startCamera();
+    }
+
+    // Cleanup function: Stops camera when modal closes OR component unmounts
+    return () => {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      setStream(null);
+    };
+  }, [showCameraModal]);
+
+  const handleCameraCapture = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Match canvas size to video stream
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
+            processUpload(file);
+            setShowCameraModal(false);
+          }
+        }, 'image/jpeg');
+      }
+    }
+  };
+
+  const handleOnboardingSubmit = (skipped: boolean) => {
+    if (!skipped) {
+      setPatientMetadata(tempMetadata);
+    }
+    setOnboardingComplete(true);
+  };
+
+  const processUpload = (file: File) => {
+    setShowUploadModal(false); // Close modal if open
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      
+      // REMOVE DEMO DATA on first real upload
+      let realObservations = observations.filter(o => !o.isDemo);
+      
+      // RESET SESSION ON FIRST UPLOAD
+      // If this is the first image the user is manually adding (realObservations is empty), start a fresh session.
+      let activeSessionId = sessionId;
+      let newDayIndex = realObservations.length + 1;
+
+      if (realObservations.length === 0) {
+           activeSessionId = generateNewSessionId();
+           setSessionId(activeSessionId);
+           newDayIndex = 1; // It's Day 1 now
+      }
+      
+      // Append new observation locally (optimistic)
+      const newObs = { day: newDayIndex, img: base64String, isDemo: false };
+      const updatedObs = [...realObservations, newObs];
+      
+      setObservations(updatedObs);
+      setSelectedDay(newDayIndex); // Auto-select latest
+      
+      // Pass specifically this image for analysis
+      fetchData(base64String, updatedObs, activeSessionId);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        
-        // Append new observation
-        const newDayIndex = observations.length + 1;
-        const newObs = { day: newDayIndex, img: base64String };
-        const updatedObs = [...observations, newObs];
-        
-        setObservations(updatedObs);
-        setSelectedDay(newDayIndex); // Auto-select latest
-        
-        // Pass specifically this image for analysis
-        fetchData(base64String, updatedObs);
-      };
-      reader.readAsDataURL(file);
+      processUpload(file);
     }
   };
 
-  const fetchData = async (customImageBase64?: string, currentObservations?: { day: number, img: string }[]) => {
+  const fetchData = async (customImageBase64?: string, currentObservations?: { day: number, img: string, isDemo?: boolean }[], activeSessionId?: string) => {
     try {
       setLoading(true);
       setError(null);
       
       const requestData: any = { 
-        enable_simulation: simulationMode 
+        enable_simulation: simulationMode,
+        session_id: activeSessionId || sessionId,
+        metadata: patientMetadata // Pass metadata
       };
+
+      const obsToUse = currentObservations || observations;
 
       if (customImageBase64) {
         requestData.image_base64 = customImageBase64;
         requestData.use_demo_image = false;
       } else {
         // If no specific image passed, use the latest one from state
-        const obsToUse = currentObservations || observations;
         if (obsToUse.length > 0) {
             requestData.image_base64 = obsToUse[obsToUse.length - 1].img;
             requestData.use_demo_image = false;
@@ -117,6 +254,35 @@ export const Dashboard: React.FC = () => {
 
       const response = await analyzeWound(requestData);
       setData(response);
+      
+      // Update the correctly corresponding observation with these metrics
+      // This ensures that when we slide back to this day, we show THESE metrics, not the latest ones
+      const dayIndex = response.metadata.observation_count;
+      
+      // If we are in demo mode/initial load and observations is empty, we must populate it from the response
+      if (observations.length === 0 && response.flags.demo_mode) {
+          const demoObs = {
+              day: 1,
+              img: response.measurement.image_url || BEFORE_IMAGE, // Use backend URL or fallback
+              isDemo: true, // EXPLICITLY MARK AS DEMO
+              metrics: response.measurement
+          };
+          setObservations([demoObs]);
+      } else if (dayIndex > 0 && obsToUse.length >= dayIndex) {
+         // Create a shallow copy of the observations logic
+         setObservations(prevObs => {
+            const nextObs = [...prevObs];
+            const targetIndex = nextObs.findIndex(o => o.day === dayIndex);
+            if (targetIndex !== -1) {
+                nextObs[targetIndex] = {
+                    ...nextObs[targetIndex],
+                    metrics: response.measurement,
+                    isDemo: nextObs[targetIndex].isDemo ?? false // Preserve or default
+                };
+            }
+            return nextObs;
+         });
+      }
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
@@ -129,65 +295,91 @@ export const Dashboard: React.FC = () => {
   // COMPUTED VALUES
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  // RULE 2 & 3: Baseline must be first NON-DEMO observation
+  const realObservations = observations.filter(o => !o.isDemo);
+  const baselineObs = realObservations.length > 0 ? realObservations[0] : null;
+
   // Resolve Images for Comparison
-  // CRITICAL FIX: Left is ALWAYS Day 1 (Baseline). Right is Day N (Selected).
-  const baselineImage = observations.length > 0 ? observations[0].img : BEFORE_IMAGE;
-  const currentImage = observations.length > 0 
-    ? (observations[selectedDay - 1]?.img || observations[observations.length - 1].img) 
+  // Left is ALWAYS Baseline. Right is Day N (Selected).
+  const baselineImage = baselineObs ? baselineObs.img : BEFORE_IMAGE;
+  const currentImage = realObservations.length > 0 
+    ? (realObservations[selectedDay - 1]?.img || realObservations[realObservations.length - 1].img) 
     : AFTER_IMAGE;
+  
+  // Get historical metrics if available
+  const historicalMetrics = realObservations[selectedDay - 1]?.metrics;
+  // Use historical if available, otherwise fallback to latest IF selected day matches latest
+  const displayMetrics = historicalMetrics || (selectedDay === data?.metadata.observation_count ? data?.measurement : null);
 
   // Get metrics for selected day
   const getMetricsForDay = (day: number) => {
+    // Safety check: ensure we are not reading from demo data
+    // Rule 8: Add a Safety Assertion (Kept here as it relies on component state)
+    if (observations.some(o => o.isDemo && realObservations.includes(o))) {
+         // This should be impossible due to filtering but is a required assertion
+         throw new Error("CRITICAL DATA CORRUPTION: Demo data detected in real metric computation!");
+    }
+
     if (!data?.measurement?.trajectory) return null;
-    const index = day - 1;
-    const actual = data.measurement.trajectory.actual[index];
-    const expected = data.measurement.trajectory.expected[index];
-    const prevActual = index > 0 ? data.measurement.trajectory.actual[index - 1] : actual;
 
-    if (actual === undefined || expected === undefined) return null;
-
-    const deviation = actual - expected;
-    const changeFromPrev = prevActual ? ((actual - prevActual) / prevActual) * 100 : 0;
-
-    return {
-      actual,
-      expected,
-      deviation,
-      changeFromPrev,
-      direction: changeFromPrev > 0.1 ? 'up' as const :
-        changeFromPrev < -0.1 ? 'down' as const : 'stable' as const
-    };
+    return calculateMetricsForDay(
+        day,
+        realObservations.length,
+        data.measurement.trajectory.actual,
+        data.measurement.trajectory.expected,
+        displayMetrics
+    );
   };
 
   const dayMetrics = getMetricsForDay(selectedDay);
 
   // Generate explanation content based on data
   const getExplanation = () => {
-    if (!data?.measurement) return null;
+    try {
+      // Prefer displayMetrics (historical for selected day) over generic data
+      const targetMetrics = displayMetrics || data?.measurement;
+      
+      if (!targetMetrics) return null;
 
-    const risk = data.measurement.risk_level as RiskLevel;
-    const config = riskConfig[risk];
+      const risk = targetMetrics.risk_level as RiskLevel;
+      
+      // PARANOID SAFETY CHECK: Define raw fallback if imports fail
+      const fallbackConfig = {
+         label: 'Needs Monitoring',
+         color: '#F59E0B'
+      };
 
-    let status = config.label;
-    let reason = data.measurement.alert_reason || 'Wound healing is progressing as expected for this post-operative stage.';
-    let logic = '';
+      // Safely resolve config
+      const config = (riskConfig && riskConfig[risk]) 
+        ? riskConfig[risk] 
+        : (riskConfig && riskConfig['AMBER'] ? riskConfig['AMBER'] : fallbackConfig);
 
-    if (risk === 'GREEN') {
-      logic = `Risk Assessment: GREEN\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (within expected range)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (acceptable levels)\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (minimal)\n• Trajectory: Following expected healing curve`;
-    } else if (risk === 'AMBER') {
-      logic = `Risk Assessment: AMBER\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (deviation detected)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (${data.measurement.redness_pct > 15 ? 'elevated' : 'normal'})\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (${data.measurement.pus_pct > 5 ? 'elevated' : 'normal'})\n• Trajectory: Slower than expected healing rate`;
-    } else {
-      logic = `Risk Assessment: RED\n• Wound area: ${data.measurement.area_cm2.toFixed(1)} cm² (significantly above expected)\n• Redness: ${data.measurement.redness_pct.toFixed(1)}% (requires attention)\n• Exudate: ${data.measurement.pus_pct.toFixed(1)}% (elevated)\n• Trajectory: Healing stalled or regressing`;
+      let status = config.label || 'Unknown';
+      let reason = targetMetrics.alert_reason || 'Wound healing is progressing as expected.';
+      let logic = '';
+
+      if (risk === 'GREEN') {
+        logic = `Risk Assessment: GREEN\n• Wound area: ${targetMetrics.area_cm2.toFixed(1)} cm²\n• Redness: ${targetMetrics.redness_pct.toFixed(1)}%\n• Exudate: ${targetMetrics.pus_pct.toFixed(1)}%`;
+      } else if (risk === 'AMBER') {
+        logic = `Risk Assessment: AMBER\n• Wound area: ${targetMetrics.area_cm2.toFixed(1)} cm²\n• Trajectory: Slower than expected`;
+      } else {
+        logic = `Risk Assessment: RED\n• Wound area: ${targetMetrics.area_cm2.toFixed(1)} cm²\n• Critical indicators detected`;
+      }
+
+      return { status, reason, logic, riskLevel: risk || 'AMBER' };
+    } catch (e) {
+      console.error("Critical error in getExplanation:", e);
+      return { status: "Error", reason: "Unable to calculate status", logic: "", riskLevel: "AMBER" };
     }
-
-    return { status, reason, logic, riskLevel: risk };
   };
 
   const explanation = getExplanation();
 
   // Generate alert cards data
   const getAlerts = () => {
-    if (!data || !dayMetrics) return [];
+    const targetMetrics = displayMetrics || data?.measurement;
+    
+    if (!targetMetrics || !dayMetrics) return [];
 
     const alerts: Array<{
       id: string;
@@ -215,33 +407,33 @@ export const Dashboard: React.FC = () => {
     }
 
     // Check redness
-    if (data.measurement.redness_pct > 15) {
+    if (targetMetrics.redness_pct > 15) {
       alerts.push({
         id: 'redness-elevated',
         title: 'Elevated Redness Detected',
-        description: `Peri-wound redness is at ${data.measurement.redness_pct.toFixed(1)}%, which is above the normal threshold of 15%.`,
+        description: `Peri-wound redness is at ${targetMetrics.redness_pct.toFixed(1)}%, which is above the normal threshold of 15%.`,
         metric: {
           label: 'Redness',
-          value: data.measurement.redness_pct,
+          value: targetMetrics.redness_pct,
           unit: '%',
-          change: data.measurement.redness_pct - 15,
+          change: targetMetrics.redness_pct - 15,
           direction: 'up'
         },
-        severity: data.measurement.redness_pct > 25 ? 'RED' : 'AMBER'
+        severity: targetMetrics.redness_pct > 25 ? 'RED' : 'AMBER'
       });
     }
 
     // Check exudate
-    if (data.measurement.pus_pct > 5) {
+    if (targetMetrics.pus_pct > 5) {
       alerts.push({
         id: 'exudate-elevated',
         title: 'Exudate Level Elevated',
-        description: `Exudate/pus percentage is at ${data.measurement.pus_pct.toFixed(1)}%, exceeding the 5% threshold.`,
+        description: `Exudate/pus percentage is at ${targetMetrics.pus_pct.toFixed(1)}%, exceeding the 5% threshold.`,
         metric: {
           label: 'Exudate',
-          value: data.measurement.pus_pct,
+          value: targetMetrics.pus_pct,
           unit: '%',
-          change: data.measurement.pus_pct - 5,
+          change: targetMetrics.pus_pct - 5,
           direction: 'up'
         },
         severity: 'RED'
@@ -509,21 +701,23 @@ export const Dashboard: React.FC = () => {
         )}
 
         {/* Before/After Comparison */}
-        <section style={sectionStyle}>
-          <div style={sectionHeaderStyle}>
-            <h2 style={sectionTitleStyle}>
-              <span>👁️</span>
-              <span>Visual Comparison</span>
-            </h2>
-          </div>
-          <ComparisonSlider
-            beforeImage={baselineImage}
-            afterImage={currentImage}
-            beforeLabel="Day 1"
-            afterLabel={`Day ${selectedDay}`}
-            height={400}
-          />
-        </section>
+        {observations.length > 1 && (
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>
+                <span>👁️</span>
+                <span>Visual Comparison</span>
+              </h2>
+            </div>
+            <ComparisonSlider
+              beforeImage={baselineImage}
+              afterImage={currentImage}
+              beforeLabel="Day 1"
+              afterLabel={`Day ${selectedDay}`}
+              height={400}
+            />
+          </section>
+        )}
 
         {/* Reassuring footer */}
         <div style={{
@@ -547,6 +741,109 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div style={containerStyle}>
+       {/* ONBOARDING MODAL */}
+       {!onboardingComplete && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: spacing.md
+        }}>
+          <div style={{
+            backgroundColor: colors.white,
+            borderRadius: '16px',
+            padding: spacing['2xl'],
+            width: '100%',
+            maxWidth: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+          }}>
+            <h2 style={{ fontSize: typography['2xl'], fontWeight: typography.bold, marginBottom: spacing.sm, color: colors.gray900 }}>
+              Welcome to Wound Monitor
+            </h2>
+            <p style={{ color: colors.gray600, marginBottom: spacing.xl }}>
+              Optional: Providing basic health context helps us tailor educational information. This data stays local.
+            </p>
+
+            <div style={{ display: 'grid', gap: spacing.lg, marginBottom: spacing['2xl'] }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: spacing.md, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={tempMetadata.has_diabetes}
+                  onChange={(e) => setTempMetadata({...tempMetadata, has_diabetes: e.target.checked})}
+                  style={{ width: '20px', height: '20px', accentColor: colors.blue500 }}
+                />
+                <span style={{ fontSize: typography.lg, color: colors.gray800 }}>I have diabetes</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: spacing.md, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={tempMetadata.is_smoker}
+                  onChange={(e) => setTempMetadata({...tempMetadata, is_smoker: e.target.checked})}
+                  style={{ width: '20px', height: '20px', accentColor: colors.blue500 }}
+                />
+                <span style={{ fontSize: typography.lg, color: colors.gray800 }}>I am a smoker</span>
+              </label>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+                <span style={{ fontSize: typography.sm, color: colors.gray600 }}>Age (Optional)</span>
+                <input 
+                  type="number" 
+                  placeholder="Enter your age"
+                  value={tempMetadata.age || ''}
+                  onChange={(e) => setTempMetadata({...tempMetadata, age: parseInt(e.target.value) || undefined})}
+                  style={{ 
+                    padding: spacing.md, 
+                    borderRadius: '8px', 
+                    border: `1px solid ${colors.gray300}`,
+                    fontSize: typography.base
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: spacing.md }}>
+              <button 
+                onClick={() => handleOnboardingSubmit(false)}
+                style={{
+                  flex: 1,
+                  padding: spacing.lg,
+                  background: colors.blue600,
+                  color: colors.white,
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontSize: typography.base,
+                  fontWeight: typography.semibold,
+                  cursor: 'pointer'
+                }}
+              >
+                Save Context
+              </button>
+              <button 
+                onClick={() => handleOnboardingSubmit(true)}
+                style={{
+                  flex: 1,
+                  padding: spacing.lg,
+                  background: 'transparent',
+                  color: colors.gray600,
+                  border: `1px solid ${colors.gray300}`,
+                  borderRadius: '10px',
+                  fontSize: typography.base,
+                  fontWeight: typography.medium,
+                  cursor: 'pointer'
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header style={headerStyle}>
         <div style={headerTopStyle}>
@@ -573,19 +870,174 @@ export const Dashboard: React.FC = () => {
             
             <input
               type="file"
-              ref={fileInputRef}
+              ref={fileInputGalleryRef}
               onChange={handleImageUpload}
               accept="image/*"
               style={{ display: 'none' }}
             />
+            <input
+              type="file"
+              ref={fileInputCameraRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              capture="environment" // Forces camera on mobile
+              style={{ display: 'none' }}
+            />
             
-            <button style={refreshButtonStyle} onClick={() => fileInputRef.current?.click()}>
+            <button style={refreshButtonStyle} onClick={() => setShowUploadModal(true)}>
               <span>📷</span>
-              <span>Upload & Analyze</span>
+              <span>Add Observation</span>
             </button>
           </div>
         </div>
       </header>
+
+      {/* UPLOAD MODAL */}
+      {showUploadModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: spacing.md
+        }} onClick={() => setShowUploadModal(false)}>
+          <div style={{
+            backgroundColor: colors.white,
+            borderRadius: '16px',
+            padding: spacing['2xl'],
+            width: '100%',
+            maxWidth: '400px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            textAlign: 'center'
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: typography.xl, fontWeight: typography.bold, marginBottom: spacing.lg }}>
+              Add Wound Observation
+            </h3>
+            <div style={{ display: 'grid', gap: spacing.md }}>
+              <button 
+                onClick={() => setShowCameraModal(true)}
+                style={{
+                  ...refreshButtonStyle,
+                  width: '100%', 
+                  justifyContent: 'center',
+                  background: colors.blue600,
+                  fontSize: typography.lg,
+                  height: '60px'
+                }}
+              >
+                📸 Take Photo
+              </button>
+              <button 
+                onClick={() => fileInputGalleryRef.current?.click()}
+                style={{
+                  ...refreshButtonStyle,
+                  width: '100%', 
+                  justifyContent: 'center',
+                  background: colors.white,
+                  color: colors.gray800,
+                  border: `2px solid ${colors.gray200}`,
+                  fontSize: typography.lg,
+                  height: '60px'
+                }}
+              >
+                🖼️ Upload from Gallery
+              </button>
+            </div>
+            <button 
+              onClick={() => setShowUploadModal(false)}
+              style={{
+                marginTop: spacing.lg,
+                background: 'none',
+                border: 'none',
+                color: colors.gray500,
+                fontSize: typography.sm,
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CAMERA MODAL */}
+      {showCameraModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: spacing.md
+        }}>
+          <div style={{
+            position: 'relative',
+            width: '100%',
+            maxWidth: '640px',
+            backgroundColor: '#000',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
+          }}>
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              style={{ width: '100%', height: 'auto', display: 'block' }}
+            />
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+            
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: spacing.lg,
+              background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+              display: 'flex',
+              justifyContent: 'center',
+              gap: spacing['2xl']
+            }}>
+               <button
+                 onClick={() => setShowCameraModal(false)}
+                 style={{
+                   background: 'rgba(255, 255, 255, 0.2)',
+                   color: '#fff',
+                   border: 'none',
+                   borderRadius: '50px',
+                   padding: '12px 24px',
+                   fontSize: typography.base,
+                   fontWeight: typography.bold,
+                   cursor: 'pointer',
+                   backdropFilter: 'blur(4px)'
+                 }}
+               >
+                 Cancel
+               </button>
+               <button
+                 onClick={handleCameraCapture}
+                 style={{
+                   width: '72px',
+                   height: '72px',
+                   borderRadius: '50%',
+                   background: '#fff',
+                   border: '4px solid rgba(255,255,255,0.3)',
+                   cursor: 'pointer',
+                   boxShadow: '0 0 20px rgba(255,255,255,0.4)'
+                 }}
+                 aria-label="Capture Photo"
+               />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Simulation Warning Banner */}
       <WarningBanner visible={simulationMode} />
@@ -609,21 +1061,23 @@ export const Dashboard: React.FC = () => {
         <div style={colMainStyle}>
 
           {/* Visual Progression */}
-          <section style={sectionStyle}>
-            <div style={sectionHeaderStyle}>
-              <h2 style={sectionTitleStyle}>
-                <span>👁️</span>
-                <span>Visual Progression</span>
-              </h2>
-            </div>
-            <ComparisonSlider
-              beforeImage={baselineImage}
-              afterImage={currentImage}
-              beforeLabel="Day 1"
-              afterLabel={`Day ${selectedDay}`}
-              height={380}
-            />
-          </section>
+          {observations.length > 1 && (
+            <section style={sectionStyle}>
+              <div style={sectionHeaderStyle}>
+                <h2 style={sectionTitleStyle}>
+                  <span>👁️</span>
+                  <span>Visual Progression</span>
+                </h2>
+              </div>
+              <ComparisonSlider
+                beforeImage={baselineImage}
+                afterImage={currentImage}
+                beforeLabel="Day 1"
+                afterLabel={`Day ${selectedDay}`}
+                height={380}
+              />
+            </section>
+          )}
 
           {/* Healing Trajectory Chart */}
           <section style={sectionStyle}>
@@ -692,6 +1146,7 @@ export const Dashboard: React.FC = () => {
               )}
             </section>
           )}
+
         </div>
 
         {/* ━━━━━━━━ RIGHT COLUMN: Metrics & Controls ━━━━━━━━ */}
@@ -699,7 +1154,7 @@ export const Dashboard: React.FC = () => {
 
           {/* Risk Level Badge */}
           <section style={{ marginBottom: spacing['2xl'] }}>
-            <RiskBadge level={data.measurement.risk_level as RiskLevel} size="lg" />
+            <RiskBadge level={(explanation?.riskLevel || data.measurement.risk_level) as RiskLevel} size="lg" />
           </section>
 
           {/* Explainable Alerts Section */}
@@ -738,7 +1193,7 @@ export const Dashboard: React.FC = () => {
             <div style={metricsGridStyle}>
               <MeasuredMetricsCard
                 label="Wound Area"
-                value={dayMetrics?.actual || data.measurement.area_cm2}
+                value={dayMetrics?.actual || (displayMetrics?.area_cm2 ?? data.measurement.area_cm2)}
                 unit="cm²"
               />
               <MeasuredMetricsCard
@@ -749,15 +1204,15 @@ export const Dashboard: React.FC = () => {
               />
               <MeasuredMetricsCard
                 label="Redness"
-                value={data.measurement.redness_pct}
+                value={displayMetrics?.redness_pct ?? data.measurement.redness_pct}
                 unit="%"
-                riskLevel={data.measurement.redness_pct > 15 ? 'AMBER' : 'GREEN'}
+                riskLevel={(displayMetrics?.redness_pct ?? data.measurement.redness_pct) > 15 ? 'AMBER' : 'GREEN'}
               />
               <MeasuredMetricsCard
                 label="Exudate"
-                value={data.measurement.pus_pct}
+                value={displayMetrics?.pus_pct ?? data.measurement.pus_pct}
                 unit="%"
-                riskLevel={data.measurement.pus_pct > 5 ? 'RED' : 'GREEN'}
+                riskLevel={(displayMetrics?.pus_pct ?? data.measurement.pus_pct) > 5 ? 'RED' : 'GREEN'}
               />
             </div>
 
@@ -778,37 +1233,29 @@ export const Dashboard: React.FC = () => {
             )}
           </section>
 
-          {/* Simulation Toggle */}
-          <section style={sectionStyle}>
-            <SimulationToggle
-              enabled={simulationMode}
-              onToggle={setSimulationMode}
-            />
-          </section>
+           {/* NEW: Contextual Information Panel */}
+           <section style={{ 
+             marginTop: spacing['2xl'], 
+             padding: spacing.lg, 
+             backgroundColor: colors.gray50, 
+             borderRadius: '12px',
+             border: `1px solid ${colors.gray200}`
+           }}>
+             <h3 style={{ fontSize: typography.sm, fontWeight: typography.bold, color: colors.gray700, marginBottom: spacing.sm, textTransform: 'uppercase' }}>
+               ℹ️ Contextual Information
+             </h3>
+             <p style={{ fontSize: typography.sm, color: colors.gray600, lineHeight: 1.5, marginBottom: spacing.sm }}>
+               Healing trends can vary across individuals. This contextual information is shown for interpretation only and does not affect the measured results above.
+             </p>
+             {(patientMetadata && (patientMetadata.has_diabetes || patientMetadata.is_smoker)) && (
+                <p style={{ fontSize: typography.sm, color: colors.gray600, lineHeight: 1.5 }}>
+                  Some conditions are associated with slower healing trends on average. Measured wound changes remain the primary indicator in this system.
+                </p>
+             )}
+           </section>
 
-          {/* LAYER B: Simulated Metrics */}
-          {simulationMode && (
-            <section style={sectionStyle}>
-              <div style={sectionHeaderStyle}>
-                <h2 style={{ ...sectionTitleStyle, color: colors.gray600 }}>
-                  <span>◇</span>
-                  <span>Simulated Metrics</span>
-                </h2>
-              </div>
-              <div style={metricsGridStyle}>
-                <SimulatedMetricsCard
-                  label="Scale-Normalized Area"
-                  value={data.simulation?.simulated_area_cm2 || 0}
-                  unit="cm²"
-                  originalValue={data.measurement.area_cm2}
-                />
-              </div>
-            </section>
-          )}
         </div>
       </div>
     </div>
   );
 };
-
-export default Dashboard;

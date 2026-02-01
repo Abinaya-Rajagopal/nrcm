@@ -163,12 +163,17 @@ async def _execute_core_pipeline(request: AnalyzeRequest) -> Dict[str, Any]:
     fallback_flag = DEMO_MODE # Simplified for current logic
     
     # 3. ASSEMBLE ADAPTED RESPONSE
+    # 3. ASSEMBLE ADAPTED RESPONSE
     # Store this observation in session history
     start_time = datetime.utcnow().isoformat()
     # Note: We duplicate metric extraction here slightly to get values for storage
     # In a full refactor, we would extract metrics once before this.
     debug_metrics = get_debug_metrics(image_rgb, wound_mask, peri_mask)
+    
+    session_id = request.session_id or "default_session"
+    
     add_observation(
+        session_id=session_id,
         area=debug_metrics['area_cm2'],
         redness=debug_metrics['redness_pct'],
         pus=debug_metrics['pus_pct']
@@ -182,7 +187,8 @@ async def _execute_core_pipeline(request: AnalyzeRequest) -> Dict[str, Any]:
         metadata=request.metadata,
         demo_mode=DEMO_MODE,
         fallback_used=fallback_flag,
-        enable_simulation=request.enable_simulation # Rule 4: Toggle support
+        enable_simulation=request.enable_simulation, # Rule 4: Toggle support
+        session_id=session_id
     )
     
     # Rule 1: Schema validation assertion

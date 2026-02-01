@@ -35,6 +35,12 @@ class MeasurementData(BaseModel):
     alert_reason: Optional[str] = Field(None, description="Reason for alert if risk is elevated")
     deviation_cm2: float = Field(0.0, description="Difference between actual and expected area")
 
+    @classmethod
+    def validate_metrics(cls, v):
+        if v.area_cm2 is None or v.redness_pct is None or v.pus_pct is None:
+             raise ValueError("CRITICAL: Missing core metric from inference")
+        return v
+
 
 class SimulationData(BaseModel):
     """Hypothetical simulation layer derived from measurements and metadata."""
@@ -80,6 +86,7 @@ class AnalyzeRequest(BaseModel):
     use_demo_image: bool = Field(False, description="If true, use a demo fallback image")
     metadata: Optional[PatientMetadata] = Field(None, description="Optional patient metadata for simulation")
     enable_simulation: bool = Field(True, description="Whether to include the simulation layer in the response")
+    session_id: Optional[str] = Field(None, description="Unique session identifier for multi-day tracking")
 
 
 # ============================================================

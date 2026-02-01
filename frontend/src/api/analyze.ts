@@ -66,6 +66,7 @@ export interface AnalyzeRequest {
   use_demo_image?: boolean;
   enable_simulation?: boolean;
   metadata?: PatientMetadata;
+  session_id?: string;
 }
 
 /**
